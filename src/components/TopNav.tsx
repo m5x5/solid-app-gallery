@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Bookmark, Globe, Bell, Plus, LogOut, User, Menu } from "lucide-react";
+import { Search, Bookmark, Globe, Bell, Plus, LogOut, User, Menu, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { useSolid } from "@/lib/solid-context";
 import { useBookmarks } from "@/lib/bookmarks";
 import { DEFAULT_IDP } from "@/lib/solid-auth";
+import { cn } from "@/lib/utils";
 
 // Well-known public Solid identity providers, offered as quick picks below
 // the search field. The user's own pod (DEFAULT_IDP) is listed first.
@@ -52,6 +53,9 @@ export function TopNav() {
   const [idp, setIdp] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  // Which provider URL the user just clicked — redirecting to an IdP can take
+  // a moment, so that item shows a spinner instead of its favicon meanwhile.
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   // Popular providers filtered by the typed query; if nothing typed yet,
   // the full list shows. A non-matching query gets a synthetic "custom"
@@ -77,8 +81,8 @@ export function TopNav() {
       : matches;
 
   function pickProvider(url: string) {
-    setIdp(url);
-    login(url);
+    setPendingUrl(url);
+    login(url).catch(() => setPendingUrl(null));
   }
 
   function onSearch(e: React.FormEvent) {
@@ -232,13 +236,21 @@ export function TopNav() {
                   <button
                     type="button"
                     onClick={() => pickProvider(p.url)}
-                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition hover:bg-secondary"
+                    disabled={!!pendingUrl}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition hover:bg-secondary disabled:pointer-events-none",
+                      pendingUrl && pendingUrl !== p.url && "opacity-40"
+                    )}
                   >
-                    <img
-                      src={faviconFor(p.url)}
-                      alt=""
-                      className="h-6 w-6 shrink-0 rounded"
-                    />
+                    {pendingUrl === p.url ? (
+                      <Loader2 className="h-6 w-6 shrink-0 animate-spin" />
+                    ) : (
+                      <img
+                        src={faviconFor(p.url)}
+                        alt=""
+                        className="h-6 w-6 shrink-0 rounded"
+                      />
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
                         {p.label}

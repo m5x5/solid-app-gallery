@@ -10,6 +10,8 @@ import {
   GripVertical,
   Braces,
   Tag,
+  ListChecks,
+  Check,
 } from "lucide-react";
 import { getApp, initialsFor, screenFrames, screenVideos, frameTags } from "@/lib/apps";
 import { PhoneFrame } from "@/components/PhoneFrame";
@@ -67,6 +69,13 @@ export function AppDetail() {
   const [editing, setEditing] = useState<Preview | null>(null);
   const [editSel, setEditSel] = useState<string[]>([]);
   const [editBusy, setEditBusy] = useState(false);
+
+  // Bulk mode: pick one flow, then click screenshots to add/remove them from
+  // it. Catalog edits write straight through and are held in a local
+  // override so the grid updates instantly without a full page reload.
+  const [flowEditing, setFlowEditing] = useState(false);
+  const [editingFlow, setEditingFlow] = useState<string>(SCREEN_PATTERNS[0]);
+  const [catalogTagOverrides, setCatalogTagOverrides] = useState<Record<string, string[]>>({});
 
   async function loadShots(id: string, wid: string) {
     const urls = await listScreenshots(wid, id);
@@ -231,7 +240,35 @@ export function AppDetail() {
   function currentTags(p: Preview): string[] {
     return p.kind === "upload"
       ? uploadTagsMap[p.source] || []
-      : frameTags(app!.id, p.source);
+      : catalogTagOverrides[p.source] ?? frameTags(app!.id, p.source);
+  }
+
+  // Add/remove a single flow for one screenshot, optimistically, without
+  // disturbing its other flow tags.
+  async function toggleFlowMembership(p: Preview) {
+    if (!app) return;
+    const have = currentTags(p);
+    const next = have.includes(editingFlow)
+      ? have.filter((t) => t !== editingFlow)
+      : [...have, editingFlow];
+    if (p.kind === "upload") {
+      if (!webId) return;
+      setUploadTagsMap((prev) => ({ ...prev, [p.source]: next }));
+      try {
+        await setUploadTags(webId, app.id, p.source, next);
+      } catch (err) {
+        setUploadTagsMap((prev) => ({ ...prev, [p.source]: have }));
+        setStatus(`Updating flows failed: ${(err as Error).message}`);
+      }
+    } else {
+      setCatalogTagOverrides((prev) => ({ ...prev, [p.source]: next }));
+      try {
+        await retagCatalogScreenshot(app.id, p.source, next);
+      } catch (err) {
+        setCatalogTagOverrides((prev) => ({ ...prev, [p.source]: have }));
+        setStatus(`Updating flows failed: ${(err as Error).message}`);
+      }
+    }
   }
 
   function openEdit(p: Preview) {
@@ -427,6 +464,17 @@ export function AppDetail() {
             >
               <Upload className="h-4 w-4" /> Upload screenshots
             </Button>
+            {items.length > 0 && (
+              <Button
+                onClick={() => setFlowEditing((v) => !v)}
+                disabled={busy}
+                variant={flowEditing ? "secondary" : "outline"}
+                className="gap-2"
+              >
+                <ListChecks className="h-4 w-4" />
+                {flowEditing ? "Done" : "Assign flows"}
+              </Button>
+            )}
           </div>
         ) : (
           <span className="text-sm text-muted-foreground">
@@ -434,6 +482,31 @@ export function AppDetail() {
           </span>
         )}
       </div>
+
+      {flowEditing && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+          <span className="text-sm text-muted-foreground">Editing:</span>
+          {SCREEN_PATTERNS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setEditingFlow(p)}
+              aria-pressed={editingFlow === p}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                editingFlow === p
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {p}
+            </button>
+          ))}
+          <span className="text-xs text-muted-foreground sm:ml-auto">
+            Click a screenshot to add or remove it from "{editingFlow}".
+          </span>
+        </div>
+      )}
       {status && <p className="mt-2 text-sm text-muted-foreground">{status}</p>}
 
       {items.length === 0 && (
@@ -478,57 +551,81 @@ export function AppDetail() {
           // Uploads are the user's own pod files (the user manages them); catalog
           // frames are managed only by the admin (un-publish / reorder).
           const manage = canManage(p);
+          const selected = flowEditing && currentTags(p).includes(editingFlow);
+          const frame =
+            view === "desktop" ? (
+              <DesktopFrame app={app} image={p.src} />
+            ) : (
+              <PhoneFrame app={app} image={p.src} />
+            );
           return (
             <div
               key={p.source || i}
               className="group relative"
-              draggable={manage}
+              draggable={manage && !flowEditing}
               onDragStart={() => (dragIdx.current = i)}
-              onDragOver={(e) => manage && e.preventDefault()}
-              onDrop={() => manage && onDrop(i)}
+              onDragOver={(e) => manage && !flowEditing && e.preventDefault()}
+              onDrop={() => manage && !flowEditing && onDrop(i)}
             >
-              <Link
-                to={`/screen/${encodeURIComponent(app.id)}?i=${i}`}
-                className="block transition hover:opacity-90"
-              >
-                {view === "desktop" ? (
-                  <DesktopFrame app={app} image={p.src} />
-                ) : (
-                  <PhoneFrame app={app} image={p.src} />
-                )}
-              </Link>
-              {manage && (
-                <>
-                  <span
-                    title="Drag to reorder"
-                    className="absolute left-2 top-2 z-10 flex h-8 w-8 cursor-grab items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition group-hover:opacity-100 active:cursor-grabbing"
-                  >
-                    <GripVertical className="h-4 w-4" />
-                  </span>
-                  <button
-                    onClick={() => openEdit(p)}
-                    disabled={busy}
-                    aria-label="Edit flows"
-                    title="Edit flows"
-                    className="absolute right-11 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-black/80 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
-                  >
-                    <Tag className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => removePreview(p)}
-                    disabled={busy}
-                    aria-label={
-                      p.kind === "catalog" ? "Remove from catalog" : "Delete screenshot"
-                    }
-                    title={
-                      p.kind === "catalog" ? "Remove from catalog" : "Delete screenshot"
-                    }
-                    className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-red-600 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </>
+              {flowEditing ? (
+                <button
+                  type="button"
+                  onClick={() => manage && toggleFlowMembership(p)}
+                  disabled={!manage}
+                  aria-pressed={selected}
+                  className={cn(
+                    "block w-full text-left transition",
+                    manage ? "hover:opacity-90" : "cursor-not-allowed opacity-50"
+                  )}
+                >
+                  {frame}
+                </button>
+              ) : (
+                <Link
+                  to={`/screen/${encodeURIComponent(app.id)}?i=${i}`}
+                  className="block transition hover:opacity-90"
+                >
+                  {frame}
+                </Link>
               )}
+              {flowEditing
+                ? selected && (
+                    <span className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background shadow">
+                      <Check className="h-4 w-4" />
+                    </span>
+                  )
+                : manage && (
+                    <>
+                      <span
+                        title="Drag to reorder"
+                        className="absolute left-2 top-2 z-10 flex h-8 w-8 cursor-grab items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition group-hover:opacity-100 active:cursor-grabbing"
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </span>
+                      <button
+                        onClick={() => openEdit(p)}
+                        disabled={busy}
+                        aria-label="Edit flows"
+                        title="Edit flows"
+                        className="absolute right-11 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-black/80 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                      >
+                        <Tag className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => removePreview(p)}
+                        disabled={busy}
+                        aria-label={
+                          p.kind === "catalog" ? "Remove from catalog" : "Delete screenshot"
+                        }
+                        title={
+                          p.kind === "catalog" ? "Remove from catalog" : "Delete screenshot"
+                        }
+                        className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-red-600 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
             </div>
           );
         })}
