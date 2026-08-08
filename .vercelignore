@@ -1,0 +1,12 @@
+node_modules
+dist
+test-results
+playwright-report
+.video-tmp
+*.log
+/private
+tests
+.env
+.env.*
+scripts
+shapes

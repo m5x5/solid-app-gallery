@@ -1,0 +1,76 @@
+# SHACL shapes for the gallery's media + social layer that the catalog schema
+# doesn't cover: screenshots, flows, videos (schema.org) and comments (Web
+# Annotations). These are validated CLIENT-SIDE / in CI — Solid pods (CSS) don't
+# enforce SHACL on write, so the gallery is the contract enforcer.
+@prefix sh:      <http://www.w3.org/ns/shacl#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix schema:  <http://schema.org/> .
+@prefix ex:      <http://example.org#> .
+@prefix con:     <https://solidproject.solidcommunity.net/catalog/taxonomy#> .
+@prefix oa:      <http://www.w3.org/ns/oa#> .
+@prefix as:      <https://www.w3.org/ns/activitystreams#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix :        <https://solidproject.solidcommunity.net/catalog/gallery-shapes#> .
+
+# --- association: assets hang off the catalog's ex:Software node ---
+:AppAssetsShape a sh:NodeShape ;
+  sh:targetClass ex:Software ;
+  sh:property [
+    sh:path ex:screenshot ; sh:nodeKind sh:IRI ; sh:node :ImageObjectShape ;
+    sh:name "screenshot" ; sh:description "App screenshots (forward-linked)."
+  ] , [
+    sh:path ex:flow ; sh:nodeKind sh:IRI ; sh:node :FlowShape ;
+    sh:name "flow" ; sh:description "Ordered screen sequences."
+  ] , [
+    sh:path schema:video ; sh:nodeKind sh:IRI ; sh:node :VideoObjectShape ;
+    sh:name "video"
+  ] .
+
+:ImageObjectShape a sh:NodeShape ;
+  sh:targetClass schema:ImageObject ;
+  sh:property
+    [ sh:path schema:contentUrl    ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path schema:thumbnailUrl  ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
+    [ sh:path schema:encodingFormat; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+    [ sh:path schema:width         ; sh:datatype xsd:integer ; sh:maxCount 1 ] ,
+    [ sh:path schema:height        ; sh:datatype xsd:integer ; sh:maxCount 1 ] ,
+    [ sh:path schema:caption       ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+    [ sh:path schema:keywords      ; sh:nodeKind sh:IRI ;
+      sh:description "Screen-pattern as a SKOS concept (con:LoginScreen, …)." ] ,
+    [ sh:path dcterms:created      ; sh:datatype xsd:dateTime ; sh:maxCount 1 ] ,
+    [ sh:path dcterms:creator      ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] .
+
+:VideoObjectShape a sh:NodeShape ;
+  sh:targetClass schema:VideoObject ;
+  sh:property
+    [ sh:path schema:contentUrl     ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path schema:encodingFormat ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+    [ sh:path schema:name           ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+    [ sh:path schema:duration       ; sh:datatype xsd:duration ; sh:maxCount 1 ] .
+
+# --- flows: an ordered list of screens ---
+:FlowShape a sh:NodeShape ;
+  sh:targetClass schema:ItemList ;
+  sh:property
+    [ sh:path schema:name            ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path ex:flowAction          ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
+    [ sh:path schema:numberOfItems   ; sh:datatype xsd:integer ; sh:maxCount 1 ] ,
+    [ sh:path schema:itemListElement ; sh:node :ListItemShape ; sh:minCount 1 ] .
+
+:ListItemShape a sh:NodeShape ;
+  sh:targetClass schema:ListItem ;
+  sh:property
+    [ sh:path schema:position ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path schema:item     ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+# --- comments: W3C Web Annotations (back-linked from the author's pod) ---
+:AnnotationShape a sh:NodeShape ;
+  sh:targetClass oa:Annotation ;
+  sh:property
+    [ sh:path oa:motivatedBy  ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
+    [ sh:path oa:hasTarget    ; sh:nodeKind sh:IRI ; sh:minCount 1 ] ,
+    [ sh:path oa:hasBody      ; sh:minCount 1 ] ,
+    [ sh:path as:attributedTo ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
+    [ sh:path as:audience     ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
+    [ sh:path dcterms:created ; sh:datatype xsd:dateTime ; sh:maxCount 1 ] .

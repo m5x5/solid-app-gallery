@@ -1,0 +1,72 @@
+[
+  {
+    "id": "urn:uuid:5098284b-4ed3-4e29-8d78-43137b47ef10",
+    "name": "Assemblage",
+    "landingPage": "https://gitlab.com/omd_public/assemblage",
+    "result": "login-opened",
+    "detail": "no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:9fd57741-9f86-4e98-89d5-64c0d0cf8425",
+    "name": "Community Solid Server (CSS)",
+    "landingPage": "https://communitysolidserver.github.io/CommunitySolidServer/latest/",
+    "result": "fail",
+    "detail": "no login affordance found; no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:e01a124a-688a-4e00-ad67-8b69ef116bbd",
+    "name": "dokieli",
+    "landingPage": "https://dokie.li/",
+    "result": "fail",
+    "detail": "no login affordance found; no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:e4bfaa4a-f463-4c5e-a781-d866235743ac",
+    "name": "Enterprise Solid Server (ESS)",
+    "landingPage": "https://www.inrupt.com/products/enterprise-solid-server",
+    "result": "fail",
+    "detail": "no login affordance found; no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:48f199c8-3ee1-4c77-9f8d-98215178c39e",
+    "name": "Focus",
+    "landingPage": "https://focus.noeldemartin.com",
+    "result": "login-opened",
+    "detail": "no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:692f351f-0e50-4274-9f3f-9d28d9bef6ba",
+    "name": "geopod",
+    "landingPage": "https://gihub.com/gjwgit/geopod",
+    "result": "fail",
+    "detail": "no login affordance found; no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:cac94249-6a2b-4308-bc00-67784198d54f",
+    "name": "jouw.id",
+    "landingPage": "https://jouw.id/",
+    "result": "login-opened",
+    "detail": "no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:4290e36b-2502-4ec1-bc9a-1212575a3d02",
+    "name": "Manas (मनस्)",
+    "landingPage": "https://manomayam.github.io/manas/introduction.html",
+    "result": "fail",
+    "detail": "no login affordance found; no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:865a30b8-b57f-472d-b9cc-99f0a5c591e6",
+    "name": "Media Kraken",
+    "landingPage": "https://noeldemartin.github.io/media-kraken/",
+    "result": "fail",
+    "detail": "no login affordance found; no IdP/WebID field"
+  },
+  {
+    "id": "urn:uuid:75369102-594d-43e9-8618-9e2ba57b6e39",
+    "name": "North Kensington Social Justice Archive - Pilot",
+    "landingPage": "https://nksja-demo.northkensingtonlibrary.org/",
+    "result": "fail",
+    "detail": "no login affordance found; no IdP/WebID field"
+  }
+]
