@@ -365,10 +365,51 @@ export async function uploadScreenshot(
       .internal_resourceInfo?.sourceIri || target;
   // Announce the upload to the admin's inbox (LDN) for review/publishing.
   await notifyAdminUpload(webId, appId, url, tags);
+  // Also persist the tags in the uploader's own pod (keyed by file URL) so
+  // they can be edited later — the inbox notification is a one-shot snapshot.
+  await setUploadTags(webId, appId, url, tags).catch(() => {});
   return url;
 }
 
 const ORDER_FILE = "order.json"; // explicit upload order, per screens container
+const TAGS_FILE = "tags.json"; // { [fileUrl]: string[] } flow-tag map, per screens container
+
+// Current flow tags for each of this app's pending (unpublished) uploads,
+// keyed by file URL. Public-read (same container as the images).
+export async function loadUploadTags(
+  webId: string,
+  appId: string
+): Promise<Record<string, string[]>> {
+  const container = screensContainer(webId, appId);
+  try {
+    const res = await solidFetch(container + TAGS_FILE);
+    if (!res.ok) return {};
+    const j = await res.json();
+    return j && typeof j === "object" ? j : {};
+  } catch {
+    return {};
+  }
+}
+
+// Set/replace the flow tags for a single pending upload (read-modify-write on
+// the shared per-app tags.json). Owner or admin only, gated by the caller.
+export async function setUploadTags(
+  webId: string,
+  appId: string,
+  url: string,
+  tags: string[]
+): Promise<void> {
+  const container = screensContainer(webId, appId);
+  const map = await loadUploadTags(webId, appId);
+  map[url] = tags.filter((t) => PATTERN_TAGS.includes(t));
+  const res = await solidFetch(container + TAGS_FILE, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(map),
+  });
+  if (!res.ok)
+    throw new Error(`Saving tags failed: ${res.status} ${res.statusText}`);
+}
 
 // List screenshot URLs uploaded for an app, honoring a saved drag order.
 export async function listScreenshots(
@@ -379,7 +420,7 @@ export async function listScreenshots(
   try {
     const ds = await getSolidDataset(container, { fetch: solidFetch });
     const files = getContainedResourceUrlAll(ds).filter(
-      (u) => !u.endsWith("/") && !u.endsWith(ORDER_FILE)
+      (u) => !u.endsWith("/") && !u.endsWith(ORDER_FILE) && !u.endsWith(TAGS_FILE)
     );
     // Sort by the saved order (filenames); anything not listed falls to the end.
     // Guard against a 404 whose JSON body is an error object, not an array.
@@ -664,6 +705,38 @@ export async function removeScreenshotFromCatalog(
   // Clean up the admin-pod copy of the image (best-effort).
   if (contentUrl.startsWith(SCREENS_BASE))
     await solidFetch(contentUrl, { method: "DELETE" }).catch(() => {});
+  return true;
+}
+
+// Re-tag an already-published screenshot's flow pattern(s) — replaces its
+// schema:keywords triples entirely. Direct catalog write, no review queue
+// (mirrors publish/remove/reorder: admin edits apply immediately). Returns
+// true if a matching screenshot was found and updated.
+export async function retagCatalogScreenshot(
+  appId: string,
+  contentUrl: string,
+  tags: string[]
+): Promise<boolean> {
+  const ttl = await (await solidFetch(CATALOG_URL)).text();
+  const store = new Store(new Parser().parse(ttl));
+  const nodes = store
+    .getObjects(appId, EX + "screenshot", null)
+    .map((o) => o.value)
+    .filter((n) =>
+      store
+        .getObjects(n, SCHEMA + "contentUrl", null)
+        .some((o) => o.value === contentUrl)
+    );
+  if (!nodes.length) return false;
+  const valid = [...new Set(tags.filter((t) => PATTERN_TAGS.includes(t)))];
+  const patterns = valid.length ? valid : ["Dashboard"];
+  const { namedNode } = DataFactory;
+  for (const n of nodes) {
+    store.removeQuads(store.getQuads(n, SCHEMA + "keywords", null, null));
+    for (const p of patterns)
+      store.addQuad(namedNode(n), namedNode(SCHEMA + "keywords"), namedNode(`${CON}${p}Screen`));
+  }
+  await writeCatalogStore(store);
   return true;
 }
 

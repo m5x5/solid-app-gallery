@@ -162,6 +162,11 @@ export function appHasDevice(id: string, device: Device): boolean {
 export function screenTags(id: string): string[] {
   return SCREENS[id]?.tags || [];
 }
+// Tags for one specific published frame (by its content path), for per-image
+// tag editing — screenTags() above is the app-wide union across all frames.
+export function frameTags(id: string, path: string): string[] {
+  return SCREENS[id]?.frames?.find((f) => f.path === path)?.tags || [];
+}
 // First captured frame whose tags include `tag` (so a pattern filter shows the
 // matching screen, not just frame 0).
 export function frameForTag(id: string, tag: string): string | undefined {

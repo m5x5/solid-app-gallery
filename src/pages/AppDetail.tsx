@@ -9,8 +9,9 @@ import {
   Trash2,
   GripVertical,
   Braces,
+  Tag,
 } from "lucide-react";
-import { getApp, initialsFor, screenFrames, screenVideos } from "@/lib/apps";
+import { getApp, initialsFor, screenFrames, screenVideos, frameTags } from "@/lib/apps";
 import { PhoneFrame } from "@/components/PhoneFrame";
 import { DesktopFrame } from "@/components/DesktopFrame";
 import { AppIcon } from "@/components/AppIcon";
@@ -36,6 +37,9 @@ import {
   removeScreenshotFromCatalog,
   reorderUploads,
   reorderCatalogScreenshots,
+  loadUploadTags,
+  setUploadTags,
+  retagCatalogScreenshot,
 } from "@/lib/solid-data";
 
 const SCREEN_PATTERNS = ["Login", "Onboarding", "Dashboard", "Profile", "Signup"];
@@ -48,6 +52,7 @@ export function AppDetail() {
   const { isLoggedIn, webId, isAdmin } = useSolid();
   const [shots, setShots] = useState<string[]>([]); // blob URLs (display)
   const [shotUrls, setShotUrls] = useState<string[]>([]); // pod source URLs
+  const [uploadTagsMap, setUploadTagsMap] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   // A screenshot can show more than one flow (e.g. a combined login/signup
@@ -57,18 +62,28 @@ export function AppDetail() {
   const dragIdx = useRef<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Per-image flow-tag editing (works for both pending uploads and already
+  // published catalog frames — the same picker, different persistence).
+  const [editing, setEditing] = useState<Preview | null>(null);
+  const [editSel, setEditSel] = useState<string[]>([]);
+  const [editBusy, setEditBusy] = useState(false);
+
   async function loadShots(id: string, wid: string) {
     const urls = await listScreenshots(wid, id);
-    const objs = await Promise.all(
-      urls.map((u) =>
-        fetchImageObjectUrl(u)
-          .then((src) => ({ u, src }))
-          .catch(() => ({ u, src: "" }))
-      )
-    );
+    const [objs, tagMap] = await Promise.all([
+      Promise.all(
+        urls.map((u) =>
+          fetchImageObjectUrl(u)
+            .then((src) => ({ u, src }))
+            .catch(() => ({ u, src: "" }))
+        )
+      ),
+      loadUploadTags(wid, id),
+    ]);
     const ok = objs.filter((o) => o.src);
     setShots(ok.map((o) => o.src));
     setShotUrls(ok.map((o) => o.u));
+    setUploadTagsMap(tagMap);
   }
 
   useEffect(() => {
@@ -210,6 +225,45 @@ export function AppDetail() {
     } catch (err) {
       setStatus(`Remove failed: ${(err as Error).message}`);
       setBusy(false);
+    }
+  }
+
+  function currentTags(p: Preview): string[] {
+    return p.kind === "upload"
+      ? uploadTagsMap[p.source] || []
+      : frameTags(app!.id, p.source);
+  }
+
+  function openEdit(p: Preview) {
+    setEditing(p);
+    setEditSel(currentTags(p));
+  }
+
+  function toggleEditTag(tag: string) {
+    setEditSel((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  }
+
+  async function saveEdit() {
+    if (!editing || !app) return;
+    setEditBusy(true);
+    try {
+      if (editing.kind === "upload") {
+        if (!webId) return;
+        await setUploadTags(webId, app.id, editing.source, editSel);
+        setUploadTagsMap((prev) => ({ ...prev, [editing.source]: editSel }));
+        setEditing(null);
+      } else {
+        await retagCatalogScreenshot(app.id, editing.source, editSel);
+        setEditing(null);
+        setStatus("Flows updated ✓ Reloading…");
+        setTimeout(() => window.location.reload(), 1000);
+      }
+    } catch (err) {
+      setStatus(`Updating flows failed: ${(err as Error).message}`);
+    } finally {
+      setEditBusy(false);
     }
   }
 
@@ -452,6 +506,15 @@ export function AppDetail() {
                     <GripVertical className="h-4 w-4" />
                   </span>
                   <button
+                    onClick={() => openEdit(p)}
+                    disabled={busy}
+                    aria-label="Edit flows"
+                    title="Edit flows"
+                    className="absolute right-11 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-black/80 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                  >
+                    <Tag className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => removePreview(p)}
                     disabled={busy}
                     aria-label={
@@ -482,6 +545,39 @@ export function AppDetail() {
           </button>
         )}
       </div>
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit flows</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Flow tags">
+            {SCREEN_PATTERNS.map((p) => {
+              const active = editSel.includes(p);
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => toggleEditTag(p)}
+                  disabled={editBusy}
+                  aria-pressed={active}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                    active
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+          <Button onClick={saveEdit} disabled={editBusy} className="mt-2 gap-2">
+            <Tag className="h-4 w-4" /> Save
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

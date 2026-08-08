@@ -5,6 +5,7 @@ import { useSolid } from "@/lib/solid-context";
 import { getApp } from "@/lib/apps";
 import {
   loadUploadInbox,
+  loadUploadTags,
   publishScreenshotsToCatalog,
   dismissNotice,
   fetchImageObjectUrl,
@@ -43,7 +44,19 @@ export function Review() {
     if (!admin) return;
     setLoading(true);
     Promise.all([
-      loadUploadInbox().then(async (list) => {
+      loadUploadInbox().then(async (rawList) => {
+        // The notification only captures tags as of upload time; the uploader
+        // may have since edited them (setUploadTags), so pull the current
+        // per-app tags.json and prefer it when present.
+        const byApp = new Map<string, Promise<Record<string, string[]>>>();
+        const list = await Promise.all(
+          rawList.map(async (n) => {
+            const key = `${n.actor}|${n.appId}`;
+            if (!byApp.has(key)) byApp.set(key, loadUploadTags(n.actor, n.appId).catch(() => ({})));
+            const current = (await byApp.get(key)!)[n.imageUrl];
+            return current?.length ? { ...n, tags: current } : n;
+          })
+        );
         setNotices(list);
         // Seed each notice's tag selection with what the uploader proposed
         // (falling back to Dashboard) so the reviewer starts from their intent.
