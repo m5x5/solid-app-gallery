@@ -251,9 +251,6 @@ export function TopNav() {
                 </li>
               ))}
             </ul>
-            <Button onClick={() => login(idp)} disabled={!qRaw} className="w-full">
-              Continue to log in
-            </Button>
           </DialogContent>
         </Dialog>
       </div>
