@@ -22,14 +22,64 @@ import { useSolid } from "@/lib/solid-context";
 import { useBookmarks } from "@/lib/bookmarks";
 import { DEFAULT_IDP } from "@/lib/solid-auth";
 
+// Well-known public Solid identity providers, offered as quick picks below
+// the search field. The user's own pod (DEFAULT_IDP) is listed first.
+const POD_PROVIDERS = [
+  { label: "Solid Gallery Pod", url: DEFAULT_IDP },
+  { label: "Solid Community", url: "https://solidcommunity.net/" },
+  { label: "solidweb.org", url: "https://solidweb.org/" },
+  { label: "Inrupt PodSpaces", url: "https://login.inrupt.com/" },
+];
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  }
+}
+function faviconFor(url: string): string {
+  return `https://www.google.com/s2/favicons?domain=${hostOf(url)}&sz=64`;
+}
+
 export function TopNav() {
   const { isLoggedIn, webId, name, avatar, login, logout } = useSolid();
   const { count: bookmarkCount } = useBookmarks();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [idp, setIdp] = useState(DEFAULT_IDP);
+  // Starts empty so the picker's default state is the full provider list —
+  // typing narrows it, it doesn't pre-fill a URL the filter has to undo.
+  const [idp, setIdp] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+
+  // Popular providers filtered by the typed query; if nothing typed yet,
+  // the full list shows. A non-matching query gets a synthetic "custom"
+  // result at the end so the user can pick their own pod straight from
+  // the list, same as the presets. Query and provider hosts are both
+  // normalized to bare hostnames so a pasted full URL still matches.
+  const qRaw = idp.trim().toLowerCase();
+  const qHost = qRaw ? hostOf(idp).toLowerCase() : "";
+  const matches = !qRaw
+    ? POD_PROVIDERS
+    : POD_PROVIDERS.filter((p) => {
+        const host = hostOf(p.url).toLowerCase();
+        return (
+          p.label.toLowerCase().includes(qRaw) ||
+          host.includes(qHost) ||
+          qHost.includes(host)
+        );
+      });
+  const isKnownUrl = qRaw !== "" && POD_PROVIDERS.some((p) => hostOf(p.url).toLowerCase() === qHost);
+  const providerResults =
+    qRaw && !isKnownUrl
+      ? [...matches, { label: idp, url: idp.startsWith("http") ? idp : `https://${idp}/` }]
+      : matches;
+
+  function pickProvider(url: string) {
+    setIdp(url);
+    login(url);
+  }
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -171,8 +221,37 @@ export function TopNav() {
               </DialogDescription>
             </DialogHeader>
             <label className="text-sm font-medium">Identity Provider</label>
-            <Input value={idp} onChange={(e) => setIdp(e.target.value)} />
-            <Button onClick={() => login(idp)} className="w-full">
+            <Input
+              value={idp}
+              onChange={(e) => setIdp(e.target.value)}
+              placeholder="https://your-pod-provider.com"
+            />
+            <ul className="-mx-2 max-h-64 overflow-y-auto">
+              {providerResults.map((p) => (
+                <li key={p.url}>
+                  <button
+                    type="button"
+                    onClick={() => pickProvider(p.url)}
+                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition hover:bg-secondary"
+                  >
+                    <img
+                      src={faviconFor(p.url)}
+                      alt=""
+                      className="h-6 w-6 shrink-0 rounded"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {p.label}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {hostOf(p.url)}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <Button onClick={() => login(idp)} disabled={!qRaw} className="w-full">
               Continue to log in
             </Button>
           </DialogContent>
