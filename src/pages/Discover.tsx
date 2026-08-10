@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { SlidersHorizontal } from "lucide-react";
 import {
@@ -86,83 +86,157 @@ function QuickLinks() {
 }
 
 // Machine-readable description of what this app can do, per the W3C
-// Application Capability spec (https://dokieli.github.io/application-capability/):
-// affordances (actions), how to invoke them (a URI template), and what they
-// need. Marked up as RDFa directly on the visible text — the same content a
-// person reads is what an agent parses, no separate JSON-LD side-channel.
-function CapabilityFooter() {
+// Application Capability spec (https://dokieli.github.io/application-capability/).
+// Follows the same RDFa idiom as reiseplan's footer: explicit ac:/odrl:/as:
+// CURIE prefixes (no default vocab), rel= for IRI-valued relationships,
+// property= for literals, and a dedicated #app fragment (distinct from the
+// document itself) as the Application's resource.
+const EX = "http://example.org#";
+
+function Capability({
+  id,
+  origin,
+  action,
+  accept,
+  resourceType,
+  template,
+  variable,
+  mapsTo,
+  children,
+}: {
+  id: string;
+  origin: string;
+  action: string;
+  accept: string;
+  resourceType?: { curie: string; href: string };
+  template?: string;
+  variable?: string;
+  mapsTo?: string;
+  children: ReactNode;
+}) {
   return (
-    <footer
-      vocab="https://www.w3.org/ns/ac#"
-      prefix="hydra: http://www.w3.org/ns/hydra/core# as: https://www.w3.org/ns/activitystreams#"
-      resource="/"
-      typeof="Application"
-      className="mt-16 border-t border-border pt-6 text-sm text-muted-foreground"
-    >
-      <p className="font-medium text-foreground">Application Capability</p>
-      <p className="mt-2 max-w-2xl">
-        This page describes what it can do using the{" "}
-        <a
-          href="https://dokieli.github.io/application-capability/"
-          target="_blank"
-          rel="noopener"
-          className="underline hover:text-foreground"
+    <div rel="ac:capability">
+      <dt about={`${origin}/#${id}`} property="dcterms:title" className="sr-only">
+        {id}
+      </dt>
+      <dd
+        id={id}
+        resource={`${origin}/#${id}`}
+        typeof="ac:Capability"
+        className="rounded-lg border border-border p-2.5 leading-relaxed"
+      >
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span>{children}</span>
+          <span rel="ac:action" resource={action} title="ac:action" className="text-muted-foreground">
+            {action}
+          </span>
+          <code property="ac:accept" title="ac:accept" className="text-muted-foreground">
+            {accept}
+          </code>
+          {resourceType && (
+            <a
+              href={resourceType.href}
+              rel="ac:resourceType"
+              title="ac:resourceType"
+              className="underline hover:text-foreground"
+            >
+              {resourceType.curie}
+            </a>
+          )}
+        </div>
+        {template && (
+          <div rel="ac:invocation" className="mt-0.5">
+            <dl
+              resource={`${origin}/#invocation-${id}`}
+              typeof="ac:UriTemplateInvocation"
+              className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground"
+            >
+              <code property="ac:template" title="ac:template">
+                {template}
+              </code>
+              <span rel="ac:mapping">
+                <dl className="inline-flex items-baseline gap-x-1">
+                  <code property="ac:variable" title="ac:variable">
+                    {variable}
+                  </code>
+                  →
+                  <span rel="ac:property" resource={mapsTo} title="ac:property">
+                    {mapsTo}
+                  </span>
+                </dl>
+              </span>
+            </dl>
+          </div>
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function CapabilityFooter() {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return (
+    <footer className="mt-16 border-t border-border pt-6 text-sm">
+      <details className="rounded-xl border border-border bg-card p-3 text-xs">
+        <summary className="cursor-pointer select-none font-medium text-foreground">
+          Application Capability (RDFa)
+        </summary>
+        <div
+          className="mt-3 space-y-2"
+          resource={`${origin}/#app`}
+          typeof="ac:Application"
+          prefix="ac: https://www.w3.org/ns/ac# odrl: http://www.w3.org/ns/odrl/2/ as: https://www.w3.org/ns/activitystreams# ex: http://example.org#"
         >
-          Application Capability
-        </a>{" "}
-        vocabulary, marked up here as RDFa so other apps and agents can
-        discover and invoke it directly.
-      </p>
-      <ul className="mt-3 max-w-2xl space-y-2">
-        <li property="capability" typeof="Capability" resource="#capability-open">
-          <link property="action" href="as:View" />
-          <meta property="output" content="text/html" />
-          Open a specific app's page at{" "}
-          <code
-            property="invocation"
-            typeof="hydra:IriTemplate"
-            resource="#invocation-open"
-          >
-            <span property="hydra:template" content="/app/{open}">
-              /app/{"{open}"}
-            </span>
-            <span
-              property="hydra:mapping"
-              typeof="hydra:IriTemplateMapping"
-              resource="#mapping-open"
-              className="hidden"
+          <p className="text-muted-foreground">
+            <span property="as:name" className="font-semibold text-foreground">
+              Solid Gallery
+            </span>{" "}
+            — described per the{" "}
+            <a
+              href="https://dokieli.github.io/application-capability/"
+              target="_blank"
+              rel="noopener"
+              className="underline hover:text-foreground"
             >
-              <meta property="hydra:variable" content="open" />
-              <link property="hydra:property" href="open" />
-            </span>
-          </code>
-          .
-        </li>
-        <li property="capability" typeof="Capability" resource="#capability-search">
-          <link property="action" href="as:View" />
-          <meta property="output" content="text/html" />
-          Search apps at{" "}
-          <code
-            property="invocation"
-            typeof="hydra:IriTemplate"
-            resource="#invocation-search"
-          >
-            <span property="hydra:template" content="/screens?q={search}">
-              /screens?q={"{search}"}
-            </span>
-            <span
-              property="hydra:mapping"
-              typeof="hydra:IriTemplateMapping"
-              resource="#mapping-search"
-              className="hidden"
+              Application Capability
+            </a>{" "}
+            vocabulary.
+          </p>
+          <dl className="grid gap-1.5 sm:grid-cols-2">
+            <Capability
+              id="capability-view"
+              origin={origin}
+              action="odrl:read"
+              accept="text/html"
+              template={`${origin}/app/{open}`}
+              variable="open"
+              mapsTo="ac:open"
             >
-              <meta property="hydra:variable" content="search" />
-              <link property="hydra:property" href="search" />
-            </span>
-          </code>
-          .
-        </li>
-      </ul>
+              capability-view
+            </Capability>
+            <Capability
+              id="capability-search"
+              origin={origin}
+              action="odrl:read"
+              accept="text/html"
+              template={`${origin}/screens?q={search}`}
+              variable="search"
+              mapsTo="ac:search"
+            >
+              capability-search
+            </Capability>
+            <Capability
+              id="capability-read-apps"
+              origin={origin}
+              action="odrl:read"
+              accept="text/turtle"
+              resourceType={{ curie: "ex:Software", href: `${EX}Software` }}
+            >
+              capability-read-apps
+            </Capability>
+          </dl>
+        </div>
+      </details>
     </footer>
   );
 }
