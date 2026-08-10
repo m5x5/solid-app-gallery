@@ -115,11 +115,11 @@ and kept as portable RDF:
 ### SHACL is a client/CI contract, not a server feature
 
 CSS (and Solid pods generally) **do not enforce SHACL on write**, so the model is
-validated client/CI-side against `shapes/gallery-shacl.ttl` — exactly how the
+validated client/CI-side against `public/shapes/gallery-shacl.ttl` — exactly how the
 upstream catalog does (it SHACL-checks `catalog-data.ttl` in CI and uses the shape
 to generate its submit form).
 
-`shapes/gallery-shacl.ttl` holds the `:ImageObjectShape`, `:FlowShape`,
+`public/shapes/gallery-shacl.ttl` holds the `:ImageObjectShape`, `:FlowShape`,
 `:VideoObjectShape` and `:AnnotationShape`, plus an `:AppAssetsShape` that adds
 `ex:screenshot`/`ex:flow`/`schema:video` to the catalog's `ex:Software` via
 `sh:node` — the same nesting the catalog uses for `ex:provider`.

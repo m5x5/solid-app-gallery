@@ -92,6 +92,11 @@ function QuickLinks() {
 // property= for literals, and a dedicated #app fragment (distinct from the
 // document itself) as the Application's resource.
 const EX = "http://example.org#";
+const OA = "http://www.w3.org/ns/oa#";
+const SCHEMA = "http://schema.org/";
+// Served from public/shapes/ — the file's own gallery-shapes# namespace is
+// its logical identity, but ac:shape needs something actually dereferenceable.
+const SHAPES_DOC = "/shapes/gallery-shacl.ttl";
 
 function Capability({
   id,
@@ -99,6 +104,7 @@ function Capability({
   action,
   accept,
   resourceType,
+  shapes,
   template,
   variable,
   mapsTo,
@@ -109,6 +115,7 @@ function Capability({
   action: string;
   accept: string;
   resourceType?: { curie: string; href: string };
+  shapes?: { label: string; fragment: string }[];
   template?: string;
   variable?: string;
   mapsTo?: string;
@@ -143,6 +150,17 @@ function Capability({
               {resourceType.curie}
             </a>
           )}
+          {shapes?.map((s) => (
+            <a
+              key={s.fragment}
+              href={`${origin}${SHAPES_DOC}#${s.fragment}`}
+              rel="ac:shape"
+              title="ac:shape"
+              className="underline hover:text-foreground"
+            >
+              {s.label}
+            </a>
+          ))}
         </div>
         {template && (
           <div rel="ac:invocation" className="mt-0.5">
@@ -185,7 +203,7 @@ function CapabilityFooter() {
           className="mt-3 space-y-2"
           resource={`${origin}/#app`}
           typeof="ac:Application"
-          prefix="ac: https://www.w3.org/ns/ac# odrl: http://www.w3.org/ns/odrl/2/ as: https://www.w3.org/ns/activitystreams# ex: http://example.org#"
+          prefix="ac: https://www.w3.org/ns/ac# odrl: http://www.w3.org/ns/odrl/2/ as: https://www.w3.org/ns/activitystreams# ex: http://example.org# schema: http://schema.org/ oa: http://www.w3.org/ns/oa#"
         >
           <p className="text-muted-foreground">
             <span property="as:name" className="font-semibold text-foreground">
@@ -231,8 +249,52 @@ function CapabilityFooter() {
               action="odrl:read"
               accept="text/turtle"
               resourceType={{ curie: "ex:Software", href: `${EX}Software` }}
+              shapes={[{ label: "AppAssetsShape", fragment: "AppAssetsShape" }]}
             >
               capability-read-apps
+            </Capability>
+            <Capability
+              id="capability-read-screenshots"
+              origin={origin}
+              action="odrl:read"
+              accept="text/turtle"
+              resourceType={{ curie: "schema:ImageObject", href: `${SCHEMA}ImageObject` }}
+              shapes={[{ label: "ImageObjectShape", fragment: "ImageObjectShape" }]}
+            >
+              capability-read-screenshots
+            </Capability>
+            <Capability
+              id="capability-read-videos"
+              origin={origin}
+              action="odrl:read"
+              accept="text/turtle"
+              resourceType={{ curie: "schema:VideoObject", href: `${SCHEMA}VideoObject` }}
+              shapes={[{ label: "VideoObjectShape", fragment: "VideoObjectShape" }]}
+            >
+              capability-read-videos
+            </Capability>
+            <Capability
+              id="capability-read-flows"
+              origin={origin}
+              action="odrl:read"
+              accept="text/turtle"
+              resourceType={{ curie: "schema:ItemList", href: `${SCHEMA}ItemList` }}
+              shapes={[
+                { label: "FlowShape", fragment: "FlowShape" },
+                { label: "ListItemShape", fragment: "ListItemShape" },
+              ]}
+            >
+              capability-read-flows
+            </Capability>
+            <Capability
+              id="capability-read-comments"
+              origin={origin}
+              action="odrl:read"
+              accept="application/ld+json"
+              resourceType={{ curie: "oa:Annotation", href: `${OA}Annotation` }}
+              shapes={[{ label: "AnnotationShape", fragment: "AnnotationShape" }]}
+            >
+              capability-read-comments
             </Capability>
           </dl>
         </div>
