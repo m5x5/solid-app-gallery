@@ -1,0 +1,147 @@
+id: https://solidproject.solidcommunity.net/catalog/gallery-shapes
+name: gallery-shapes
+description: >-
+  LinkML rendering of the Solid Gallery's SHACL shapes
+  (public/shapes/gallery-shacl.ttl) — same constraints, alternate
+  representation, served from the same resource via content negotiation.
+default_range: string
+default_prefix: gs
+prefixes:
+  linkml: https://w3id.org/linkml/
+  gs: https://solidproject.solidcommunity.net/catalog/gallery-shapes#
+  ex: http://example.org#
+  schema: http://schema.org/
+  oa: http://www.w3.org/ns/oa#
+  as: https://www.w3.org/ns/activitystreams#
+  dcterms: http://purl.org/dc/terms/
+imports:
+  - linkml:types
+
+classes:
+  AppAssetsShape:
+    class_uri: ex:Software
+    description: >-
+      Media + social assets that hang off the catalog's ex:Software node
+      (forward-linked, not part of the catalog schema itself).
+    attributes:
+      screenshot:
+        range: ImageObjectShape
+        multivalued: true
+        slot_uri: ex:screenshot
+        description: App screenshots (forward-linked).
+      flow:
+        range: FlowShape
+        multivalued: true
+        slot_uri: ex:flow
+        description: Ordered screen sequences.
+      video:
+        range: VideoObjectShape
+        multivalued: true
+        slot_uri: schema:video
+
+  ImageObjectShape:
+    class_uri: schema:ImageObject
+    attributes:
+      contentUrl:
+        range: uriorcurie
+        required: true
+        slot_uri: schema:contentUrl
+      thumbnailUrl:
+        range: uriorcurie
+        slot_uri: schema:thumbnailUrl
+      encodingFormat:
+        range: string
+        slot_uri: schema:encodingFormat
+      width:
+        range: integer
+        slot_uri: schema:width
+      height:
+        range: integer
+        slot_uri: schema:height
+      caption:
+        range: string
+        slot_uri: schema:caption
+      keywords:
+        range: uriorcurie
+        slot_uri: schema:keywords
+        description: Screen-pattern as a SKOS concept (con:LoginScreen, …).
+      created:
+        range: datetime
+        slot_uri: dcterms:created
+      creator:
+        range: uriorcurie
+        slot_uri: dcterms:creator
+
+  VideoObjectShape:
+    class_uri: schema:VideoObject
+    attributes:
+      contentUrl:
+        range: uriorcurie
+        required: true
+        slot_uri: schema:contentUrl
+      encodingFormat:
+        range: string
+        slot_uri: schema:encodingFormat
+      name:
+        range: string
+        slot_uri: schema:name
+      duration:
+        range: string
+        slot_uri: schema:duration
+        description: xsd:duration literal (e.g. PT1M30S).
+
+  FlowShape:
+    class_uri: schema:ItemList
+    attributes:
+      name:
+        range: string
+        required: true
+        slot_uri: schema:name
+      flowAction:
+        range: uriorcurie
+        slot_uri: ex:flowAction
+      numberOfItems:
+        range: integer
+        slot_uri: schema:numberOfItems
+      itemListElement:
+        range: ListItemShape
+        multivalued: true
+        required: true
+        slot_uri: schema:itemListElement
+
+  ListItemShape:
+    class_uri: schema:ListItem
+    attributes:
+      position:
+        range: integer
+        required: true
+        slot_uri: schema:position
+      item:
+        range: uriorcurie
+        required: true
+        slot_uri: schema:item
+
+  AnnotationShape:
+    class_uri: oa:Annotation
+    description: W3C Web Annotation used for screen/flow comments.
+    attributes:
+      motivatedBy:
+        range: uriorcurie
+        slot_uri: oa:motivatedBy
+      hasTarget:
+        range: uriorcurie
+        required: true
+        slot_uri: oa:hasTarget
+      hasBody:
+        range: string
+        required: true
+        slot_uri: oa:hasBody
+      attributedTo:
+        range: uriorcurie
+        slot_uri: as:attributedTo
+      audience:
+        range: uriorcurie
+        slot_uri: as:audience
+      created:
+        range: datetime
+        slot_uri: dcterms:created

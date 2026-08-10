@@ -94,9 +94,10 @@ function QuickLinks() {
 const EX = "http://example.org#";
 const OA = "http://www.w3.org/ns/oa#";
 const SCHEMA = "http://schema.org/";
-// Served from public/shapes/ — the file's own gallery-shapes# namespace is
-// its logical identity, but ac:shape needs something actually dereferenceable.
-const SHAPES_DOC = "/shapes/gallery-shacl.ttl";
+// Content-negotiated resource (api/shapes-gallery.ts, routed here via
+// vercel.json): text/turtle (SHACL) by default, application/yaml (LinkML)
+// when preferred — same shapes, same URI, different representation.
+const SHAPES_DOC = "/shapes/gallery-shacl";
 
 function Capability({
   id,
