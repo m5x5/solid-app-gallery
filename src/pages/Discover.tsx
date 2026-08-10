@@ -85,6 +85,88 @@ function QuickLinks() {
   );
 }
 
+// Machine-readable description of what this app can do, per the W3C
+// Application Capability spec (https://dokieli.github.io/application-capability/):
+// affordances (actions), how to invoke them (a URI template), and what they
+// need. Marked up as RDFa directly on the visible text — the same content a
+// person reads is what an agent parses, no separate JSON-LD side-channel.
+function CapabilityFooter() {
+  return (
+    <footer
+      vocab="https://www.w3.org/ns/ac#"
+      prefix="hydra: http://www.w3.org/ns/hydra/core# as: https://www.w3.org/ns/activitystreams#"
+      resource="/"
+      typeof="Application"
+      className="mt-16 border-t border-border pt-6 text-sm text-muted-foreground"
+    >
+      <p className="font-medium text-foreground">Application Capability</p>
+      <p className="mt-2 max-w-2xl">
+        This page describes what it can do using the{" "}
+        <a
+          href="https://dokieli.github.io/application-capability/"
+          target="_blank"
+          rel="noopener"
+          className="underline hover:text-foreground"
+        >
+          Application Capability
+        </a>{" "}
+        vocabulary, marked up here as RDFa so other apps and agents can
+        discover and invoke it directly.
+      </p>
+      <ul className="mt-3 max-w-2xl space-y-2">
+        <li property="capability" typeof="Capability" resource="#capability-open">
+          <link property="action" href="as:View" />
+          <meta property="output" content="text/html" />
+          Open a specific app's page at{" "}
+          <code
+            property="invocation"
+            typeof="hydra:IriTemplate"
+            resource="#invocation-open"
+          >
+            <span property="hydra:template" content="/app/{open}">
+              /app/{"{open}"}
+            </span>
+            <span
+              property="hydra:mapping"
+              typeof="hydra:IriTemplateMapping"
+              resource="#mapping-open"
+              className="hidden"
+            >
+              <meta property="hydra:variable" content="open" />
+              <link property="hydra:property" href="open" />
+            </span>
+          </code>
+          .
+        </li>
+        <li property="capability" typeof="Capability" resource="#capability-search">
+          <link property="action" href="as:View" />
+          <meta property="output" content="text/html" />
+          Search apps at{" "}
+          <code
+            property="invocation"
+            typeof="hydra:IriTemplate"
+            resource="#invocation-search"
+          >
+            <span property="hydra:template" content="/screens?q={search}">
+              /screens?q={"{search}"}
+            </span>
+            <span
+              property="hydra:mapping"
+              typeof="hydra:IriTemplateMapping"
+              resource="#mapping-search"
+              className="hidden"
+            >
+              <meta property="hydra:variable" content="search" />
+              <link property="hydra:property" href="search" />
+            </span>
+          </code>
+          .
+        </li>
+      </ul>
+    </footer>
+  );
+}
+
 export function Discover() {
   const [tab, setTab] = useState<Tab>("Latest");
   const [cat, setCat] = useState("");
@@ -174,6 +256,8 @@ export function Discover() {
           <DiscoverCard key={app.id} app={app} />
         ))}
       </div>
+
+      <CapabilityFooter />
     </div>
   );
 }
