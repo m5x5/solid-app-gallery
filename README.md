@@ -45,7 +45,7 @@ desktop and the navbar Mobile/Desktop toggle filters the grids accordingly.
 ## Tests (Playwright, against the real test pod)
 
 `tests/solid-apps.spec.ts` drives the live Community Solid Server pod
-(`pod.mpeters.dev`, account `teststudent@mpeters.dev` — the admin pod is
+(`pod.mpeters.dev`, account set via `TEST_POD_EMAIL` — the admin pod is
 `pod.mpeters.dev/test/`):
 
 1. renders the discover gallery
