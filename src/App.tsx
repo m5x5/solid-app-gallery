@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink } from "react-router-dom";
+import { Outlet, NavLink, type RouteObject } from "react-router-dom";
 import { Agentation } from "agentation";
 import { TopNav } from "@/components/TopNav";
 import { Discover } from "@/pages/Discover";
@@ -12,7 +12,10 @@ import { Bookmarks } from "@/pages/Bookmarks";
 import { ScreenDetail } from "@/pages/ScreenDetail";
 import { Review } from "@/pages/Review";
 import { useSolid } from "@/lib/solid-context";
+import { useEffect, useState } from "react";
 import { useDevice, type Device } from "@/lib/device-context";
+import { subscribeCatalog } from "@/lib/apps";
+import { usePendingSubmissionFlush } from "@/lib/use-pending-flush";
 import { Smartphone, Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -84,24 +87,34 @@ function DeviceToggle() {
   );
 }
 
+// The page routes, mounted as data routes under the App layout (main.tsx),
+// so router features like <Link viewTransition> work from inside pages.
+export const routes: RouteObject[] = [
+  { path: "/", element: <Discover /> },
+  { path: "/screens", element: <Screens /> },
+  { path: "/flows", element: <Flows /> },
+  { path: "/participation", element: <Participation /> },
+  { path: "/submit", element: <Submit /> },
+  { path: "/bookmarks", element: <Bookmarks /> },
+  { path: "/review", element: <Review /> },
+  { path: "/app/:id", element: <AppDetail /> },
+  { path: "/author/:id", element: <AuthorDetail /> },
+  { path: "/screen/:id", element: <ScreenDetail /> },
+];
+
 export default function App() {
+  // Flush submissions made while logged out as soon as a session exists.
+  usePendingSubmissionFlush();
+  // Bump on every in-app catalog reload; keying <main> remounts the current
+  // page so it re-reads the (module-level) catalog lists.
+  const [catalogVersion, setCatalogVersion] = useState(0);
+  useEffect(() => subscribeCatalog(() => setCatalogVersion((v) => v + 1)), []);
   return (
     <div className="min-h-screen bg-background">
       <TopNav />
       <SubNav />
-      <main>
-        <Routes>
-          <Route path="/" element={<Discover />} />
-          <Route path="/screens" element={<Screens />} />
-          <Route path="/flows" element={<Flows />} />
-          <Route path="/participation" element={<Participation />} />
-          <Route path="/submit" element={<Submit />} />
-          <Route path="/bookmarks" element={<Bookmarks />} />
-          <Route path="/review" element={<Review />} />
-          <Route path="/app/:id" element={<AppDetail />} />
-          <Route path="/author/:id" element={<AuthorDetail />} />
-          <Route path="/screen/:id" element={<ScreenDetail />} />
-        </Routes>
+      <main key={catalogVersion}>
+        <Outlet />
       </main>
       {import.meta.env.DEV && <Agentation endpoint="http://localhost:4747" />}
     </div>

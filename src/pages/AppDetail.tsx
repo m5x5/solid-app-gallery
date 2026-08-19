@@ -1,24 +1,44 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ExternalLink,
   Github,
   Upload,
-  ArrowLeft,
   ImagePlus,
   Trash2,
   GripVertical,
+  RefreshCw,
   Braces,
   Tag,
   ListChecks,
   Check,
+  MoreHorizontal,
+  Flag,
+  UserPlus,
+  X,
+  Loader2,
+  Link2,
+  Ban,
 } from "lucide-react";
-import { getApp, initialsFor, screenFrames, screenVideos, frameTags } from "@/lib/apps";
+import {
+  getApp,
+  initialsFor,
+  screenFrames,
+  screenVideos,
+  frameTags,
+  reloadCatalog,
+} from "@/lib/apps";
+import { SuggestRemoval } from "@/components/SuggestRemoval";
+import { useHead, JsonLd, appJsonLd, appUrl, breadcrumbJsonLd } from "@/lib/seo";
+import { AuthorAvatar, authorTransitionName } from "@/components/AuthorAvatar";
+import { UploadingCard } from "@/components/UploadingCard";
+import { appTransitionName, armScreenTransition, returnScreenTransitionName } from "@/lib/transitions";
 import { PhoneFrame } from "@/components/PhoneFrame";
 import { DesktopFrame } from "@/components/DesktopFrame";
 import { AppIcon } from "@/components/AppIcon";
 import { BookmarkButton } from "@/components/BookmarkButton";
 import { useFormFactors, type FormFactor } from "@/lib/use-form-factor";
+import { usePasteImages } from "@/lib/use-paste-images";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,8 +47,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { useSolid } from "@/lib/solid-context";
 import {
   uploadScreenshot,
@@ -42,7 +67,16 @@ import {
   loadUploadTags,
   setUploadTags,
   retagCatalogScreenshot,
+  restoreApp,
+  addAppAuthor,
+  removeAppAuthor,
+  replaceUpload,
+  replaceCatalogScreenshot,
+  setAppLinks,
+  addVersionNote,
+  setAppExcluded,
 } from "@/lib/solid-data";
+import { Input } from "@/components/ui/input";
 
 const SCREEN_PATTERNS = ["Login", "Onboarding", "Dashboard", "Profile", "Signup"];
 
@@ -51,7 +85,7 @@ type Preview = { src: string; kind: "catalog" | "upload"; source: string };
 export function AppDetail() {
   const { id } = useParams();
   const app = id ? getApp(decodeURIComponent(id)) : undefined;
-  const { isLoggedIn, webId, isAdmin } = useSolid();
+  const { isLoggedIn, webId, isAdmin, name: myName } = useSolid();
   const [shots, setShots] = useState<string[]>([]); // blob URLs (display)
   const [shotUrls, setShotUrls] = useState<string[]>([]); // pod source URLs
   const [uploadTagsMap, setUploadTagsMap] = useState<Record<string, string[]>>({});
@@ -74,15 +108,84 @@ export function AppDetail() {
   // it. Catalog edits write straight through and are held in a local
   // override so the grid updates instantly without a full page reload.
   const [flowEditing, setFlowEditing] = useState(false);
+  // Secondary actions live behind the "…" menu; their dialogs are controlled
+  // here because a menu item unmounts when the menu closes.
+  const [removalOpen, setRemovalOpen] = useState(false);
+  const [rdfOpen, setRdfOpen] = useState(false);
+  // Admin: attach an author by WebID (for records created without one).
+  const [authorOpen, setAuthorOpen] = useState(false);
+  const [authorWebId, setAuthorWebId] = useState("");
+  const [authorRole, setAuthorRole] = useState<"author" | "maintainer">("author");
+  const [authorBusy, setAuthorBusy] = useState(false);
+  const [authorErr, setAuthorErr] = useState("");
+  async function saveAuthor() {
+    if (!app) return;
+    const w = authorWebId.trim();
+    if (!/^https?:\/\/\S+/.test(w)) {
+      setAuthorErr("Enter a full WebID URL (https://…/profile/card#me).");
+      return;
+    }
+    setAuthorBusy(true);
+    setAuthorErr("");
+    try {
+      await addAppAuthor(app.id, w, authorRole);
+      await reloadCatalog();
+      setAuthorOpen(false);
+      setAuthorWebId("");
+    } catch (err) {
+      setAuthorErr((err as Error).message);
+    } finally {
+      setAuthorBusy(false);
+    }
+  }
+  // Admin: edit landing page / repository (icon + Open link derive from them).
+  const [linksOpen, setLinksOpen] = useState(false);
+  const [linkLanding, setLinkLanding] = useState("");
+  const [linkRepo, setLinkRepo] = useState("");
+  const [linksBusy, setLinksBusy] = useState(false);
+  const [linksErr, setLinksErr] = useState("");
+  function openLinks() {
+    setLinkLanding(app?.landingPage || "");
+    setLinkRepo(app?.repository || "");
+    setLinksErr("");
+    setLinksOpen(true);
+  }
+  async function saveLinks() {
+    if (!app) return;
+    const ok = (v: string) => !v.trim() || /^https?:\/\/\S+/.test(v.trim());
+    if (!ok(linkLanding) || !ok(linkRepo)) {
+      setLinksErr("Links must be full URLs (https://…).");
+      return;
+    }
+    setLinksBusy(true);
+    try {
+      await setAppLinks(app.id, { landingPage: linkLanding.trim(), repository: linkRepo.trim() });
+      await reloadCatalog();
+      setLinksOpen(false);
+    } catch (err) {
+      setLinksErr((err as Error).message);
+    } finally {
+      setLinksBusy(false);
+    }
+  }
+  async function dropAuthor(agentId: string) {
+    if (!app || !window.confirm("Remove this author from the app?")) return;
+    try {
+      await removeAppAuthor(app.id, agentId);
+      await reloadCatalog();
+    } catch (err) {
+      setStatus(`Removing author failed: ${(err as Error).message}`);
+    }
+  }
   const [editingFlow, setEditingFlow] = useState<string>(SCREEN_PATTERNS[0]);
   const [catalogTagOverrides, setCatalogTagOverrides] = useState<Record<string, string[]>>({});
 
-  async function loadShots(id: string, wid: string) {
+  async function loadShots(id: string, wid: string, fresh = false) {
     const urls = await listScreenshots(wid, id);
     const [objs, tagMap] = await Promise.all([
       Promise.all(
         urls.map((u) =>
-          fetchImageObjectUrl(u)
+          fetchImageObjectUrl(u, fresh)
             .then((src) => ({ u, src }))
             .catch(() => ({ u, src: "" }))
         )
@@ -100,6 +203,16 @@ export function AppDetail() {
     loadShots(app.id, webId);
   }, [app, isLoggedIn, webId]);
 
+  useHead({
+    title: app ? app.name : "App not found",
+    description: app
+      ? `${app.name} — ${app.category}${app.description ? `. ${app.description}` : ""}`.slice(0, 300)
+      : undefined,
+    image: app ? screenFrames(app.id)[0] : undefined,
+    path: app ? `/app/${encodeURIComponent(app.id)}` : undefined,
+    type: "article",
+  });
+
   if (!app) {
     return (
       <div className="p-10 text-center text-muted-foreground">App not found.</div>
@@ -112,22 +225,91 @@ export function AppDetail() {
     );
   }
 
-  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!webId || !app || !e.target.files?.length) return;
-    setBusy(true);
-    setStatus("Uploading…");
-    try {
-      for (const f of Array.from(e.target.files)) {
-        await uploadScreenshot(webId, app.id, f, f.name, tags);
+  // Files currently uploading, with local previews for their placeholder cards.
+  const [uploading, setUploading] = useState<{ id: number; preview: string }[]>([]);
+  const uploadFiles = useCallback(
+    async (files: File[]) => {
+      if (!webId || !app || !files.length) return;
+      const pending = files.map((f, k) => ({
+        id: Date.now() + k,
+        preview: URL.createObjectURL(f),
+        file: f,
+      }));
+      setUploading((u) => [...u, ...pending]);
+      setBusy(true);
+      setStatus("Uploading…");
+      try {
+        for (const p of pending) {
+          await uploadScreenshot(webId, app.id, p.file, p.file.name || "screenshot.png", tags);
+          // Keep the placeholder until the grid has reloaded with the real file.
+        }
+        await loadShots(app.id, webId);
+        setStatus("Uploaded ✓");
+      } catch (err) {
+        setStatus(`Upload failed: ${(err as Error).message}`);
+      } finally {
+        setBusy(false);
+        setUploading((u) => u.filter((x) => !pending.some((p) => p.id === x.id)));
+        pending.forEach((p) => URL.revokeObjectURL(p.preview));
       }
-      await loadShots(app.id, webId);
-      setStatus("Uploaded ✓");
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [webId, app, tags]
+  );
+
+  function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files?.length) return;
+    uploadFiles(Array.from(e.target.files)).finally(() => {
+      if (fileRef.current) fileRef.current.value = "";
+    });
+  }
+
+  // "Replace" on a card: upload a new version of that screenshot in place —
+  // it keeps its position, flow tags and comment thread. Own uploads are
+  // overwritten at the same URL; catalog frames get a new file and the
+  // record is repointed (admin).
+  const replaceRef = useRef<HTMLInputElement>(null);
+  const [replacing, setReplacing] = useState<{ p: Preview; preview?: string } | null>(null);
+  const replaceTarget = useRef<Preview | null>(null);
+  function askReplace(p: Preview) {
+    replaceTarget.current = p;
+    replaceRef.current?.click();
+  }
+  async function onReplaceFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const p = replaceTarget.current;
+    if (replaceRef.current) replaceRef.current.value = "";
+    if (!file || !p || !app) return;
+    const preview = URL.createObjectURL(file);
+    setReplacing({ p, preview });
+    setBusy(true);
+    setStatus("Uploading new version…");
+    // Comment threads are keyed by the frame's index in the (catalog + own
+    // uploads) list — the same order ScreenDetail uses.
+    const idx = items.findIndex((x) => x.source === p.source);
+    try {
+      if (p.kind === "upload") {
+        await replaceUpload(p.source, file);
+        if (webId) await loadShots(app.id, webId, true);
+      } else {
+        await replaceCatalogScreenshot(app.id, p.source, file);
+        await reloadCatalog();
+      }
+      if (webId && idx >= 0)
+        await addVersionNote(webId, myName || webId, `${app.id}::${idx}`);
+      setStatus("Screenshot replaced ✓");
     } catch (err) {
-      setStatus(`Upload failed: ${(err as Error).message}`);
+      setStatus(`Replace failed: ${(err as Error).message}`);
     } finally {
       setBusy(false);
+      setReplacing(null);
+      URL.revokeObjectURL(preview);
     }
   }
+
+  // Paste a screenshot (e.g. Cmd+V straight from the OS screenshot tool)
+  // while logged in and viewing this app.
+  usePasteImages(uploadFiles, isLoggedIn);
 
   async function publish() {
     if (!app || !shotUrls.length) return;
@@ -136,7 +318,7 @@ export function AppDetail() {
     try {
       const n = await publishScreenshotsToCatalog(
         app.id,
-        shotUrls.map((url) => ({ url, tags }))
+        shotUrls.map((url) => ({ url, tags, by: webId || undefined }))
       );
       // The catalog now owns a copy of these images — remove the uploader's
       // originals so the same screenshot doesn't show up twice after reload.
@@ -305,18 +487,97 @@ export function AppDetail() {
   }
 
   return (
-    <div className="mx-auto max-w-[1200px] px-4 py-8 md:px-8">
-      <Link
-        to="/screens"
-        className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back
-      </Link>
+    <div className="mx-auto max-w-[1400px] px-4 py-8 md:px-8">
+      <JsonLd
+        data={[
+          appJsonLd(app, { full: true }),
+          breadcrumbJsonLd([
+            { name: "Solid Gallery", url: `${location.origin}/` },
+            { name: app.category, url: `${location.origin}/screens?cat=${encodeURIComponent(app.categoryKey)}` },
+            { name: app.name, url: appUrl(app) },
+          ]),
+        ]}
+      />
+      {app.excluded && (
+        <div
+          role="status"
+          className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm"
+        >
+          <span>
+            <span className="font-medium">Not listed in the gallery</span> — {app.excluded}. Kept in the
+            catalog for reference; reachable by direct link only.
+          </span>
+          {isAdmin && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await setAppExcluded(app.id, null);
+                  await reloadCatalog();
+                } catch (err) {
+                  setStatus(`Failed: ${(err as Error).message}`);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              List again
+            </Button>
+          )}
+        </div>
+      )}
+      {app.deleted && (
+        <div
+          role="status"
+          className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm"
+        >
+          <span>
+            <span className="font-medium">Removed from the gallery</span>
+            {app.deletedReason ? ` — ${app.deletedReason}` : ""}. It no longer appears in
+            listings; this page stays reachable by direct link.
+          </span>
+          {isAdmin && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await restoreApp(app.id);
+                  await reloadCatalog();
+                } catch (err) {
+                  setStatus(`Restore failed: ${(err as Error).message}`);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Restore
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-start gap-4">
-        <AppIcon app={app} size={64} rounded="rounded-2xl" />
+        <AppIcon
+          app={app}
+          size={64}
+          rounded="rounded-2xl"
+          style={{ viewTransitionName: appTransitionName(app.id, "icon") }}
+        />
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold">{app.name}</h1>
+          <h1
+            className="text-2xl font-bold"
+            style={{ viewTransitionName: appTransitionName(app.id, "name") }}
+          >
+            {app.name}
+          </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Badge>{app.category}</Badge>
             {app.status && <Badge>{app.status}</Badge>}
@@ -336,12 +597,28 @@ export function AppDetail() {
                 <Link
                   key={au.id}
                   to={`/author/${encodeURIComponent(au.id)}`}
+                  viewTransition
                   className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 font-medium text-foreground transition hover:border-white/30 hover:bg-secondary"
                 >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-[9px] font-bold">
-                    {initialsFor(au.name)}
+                  <AuthorAvatar author={au} className="h-5 w-5 text-[9px]" transitionId={au.id} />
+                  <span style={{ viewTransitionName: authorTransitionName(au.id, "name") }}>
+                    {au.name}
                   </span>
-                  {au.name}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      title="Remove author"
+                      aria-label={`Remove ${au.name}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropAuthor(au.id);
+                      }}
+                      className="-mr-1 ml-0.5 rounded-full p-0.5 text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </Link>
               ))}
             </div>
@@ -362,13 +639,160 @@ export function AppDetail() {
                 </a>
               </Button>
             )}
-            {app.rdf && (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline">
-                    <Braces className="h-4 w-4" /> View RDF
+            {(!app.deleted || app.rdf) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="More actions">
+                    <MoreHorizontal className="h-4 w-4" />
                   </Button>
-                </DialogTrigger>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {app.rdf && (
+                    <DropdownMenuItem onSelect={() => setRdfOpen(true)}>
+                      <Braces className="h-4 w-4" /> View RDF
+                    </DropdownMenuItem>
+                  )}
+                  {!app.deleted && (
+                    <DropdownMenuItem onSelect={() => setRemovalOpen(true)}>
+                      <Flag className="h-4 w-4" /> Suggest removal
+                    </DropdownMenuItem>
+                  )}
+                  {isAdmin && (
+                    <DropdownMenuItem onSelect={() => setAuthorOpen(true)}>
+                      <UserPlus className="h-4 w-4" /> Add author
+                    </DropdownMenuItem>
+                  )}
+                  {isAdmin && (
+                    <DropdownMenuItem onSelect={openLinks}>
+                      <Link2 className="h-4 w-4" /> Edit links
+                    </DropdownMenuItem>
+                  )}
+                  {isAdmin && !app.excluded && !app.deleted && (
+                    <DropdownMenuItem
+                      onSelect={async () => {
+                        const reason = window.prompt(
+                          `Mark "${app.name}" as not an app? It disappears from the gallery (restorable here). Reason:`,
+                          "Not an app: library / testing tool"
+                        );
+                        if (reason === null) return;
+                        setBusy(true);
+                        try {
+                          await setAppExcluded(app.id, reason.trim() || "Not an app");
+                          await reloadCatalog();
+                        } catch (err) {
+                          setStatus(`Failed: ${(err as Error).message}`);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      <Ban className="h-4 w-4" /> Not an app — exclude
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {isAdmin && (
+              <Dialog open={linksOpen} onOpenChange={setLinksOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Links for {app.name}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">Landing page</label>
+                      <Input
+                        value={linkLanding}
+                        onChange={(e) => setLinkLanding(e.target.value)}
+                        placeholder="https://…"
+                        inputMode="url"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">Repository</label>
+                      <Input
+                        value={linkRepo}
+                        onChange={(e) => setLinkRepo(e.target.value)}
+                        placeholder="https://github.com/…"
+                        inputMode="url"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      The app icon and the "Open" button come from these.
+                    </p>
+                    {linksErr && <p className="text-sm text-destructive">{linksErr}</p>}
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setLinksOpen(false)} disabled={linksBusy}>
+                        Cancel
+                      </Button>
+                      <Button onClick={saveLinks} disabled={linksBusy}>
+                        {linksBusy ? "Saving…" : "Save"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+            {isAdmin && (
+              <Dialog open={authorOpen} onOpenChange={setAuthorOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add an author to {app.name}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <Input
+                      value={authorWebId}
+                      onChange={(e) => setAuthorWebId(e.target.value)}
+                      placeholder="https://…/profile/card#me"
+                      inputMode="url"
+                      autoFocus
+                      onKeyDown={(e) => e.key === "Enter" && saveAuthor()}
+                    />
+                    <div className="flex items-center gap-2 text-sm">
+                      {(["author", "maintainer"] as const).map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setAuthorRole(r)}
+                          aria-pressed={authorRole === r}
+                          className={cn(
+                            "rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors",
+                            authorRole === r
+                              ? "border-foreground bg-foreground text-background"
+                              : "border-border text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                      <span className="text-xs text-muted-foreground">
+                        Name and avatar come from the WebID profile.
+                      </span>
+                    </div>
+                    {authorErr && <p className="text-sm text-destructive">{authorErr}</p>}
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setAuthorOpen(false)} disabled={authorBusy}>
+                        Cancel
+                      </Button>
+                      <Button onClick={saveAuthor} disabled={authorBusy || !authorWebId.trim()}>
+                        {authorBusy ? "Saving…" : "Add author"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+            {!app.deleted && (
+              <SuggestRemoval
+                appId={app.id}
+                appName={app.name}
+                open={removalOpen}
+                onOpenChange={setRemovalOpen}
+              />
+            )}
+            {app.rdf && (
+              <Dialog open={rdfOpen} onOpenChange={setRdfOpen}>
                 <DialogContent className="max-w-2xl">
                   <DialogHeader>
                     <DialogTitle>RDF for {app.name}</DialogTitle>
@@ -406,7 +830,7 @@ export function AppDetail() {
 
       <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Screens</h2>
-        {isLoggedIn ? (
+        {isLoggedIn && (
           <div className="flex flex-wrap items-center gap-3">
             <div
               className="flex flex-wrap items-center gap-1.5"
@@ -444,6 +868,14 @@ export function AppDetail() {
               onChange={onFiles}
               data-testid="screenshot-input"
             />
+            <input
+              ref={replaceRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={onReplaceFile}
+              data-testid="screenshot-replace-input"
+            />
             {/* Admin: promote their own uploaded screenshots straight into the
                 shared catalog (no review queue) — the flows selected above are
                 applied as this screenshot's tags. */}
@@ -476,10 +908,6 @@ export function AppDetail() {
               </Button>
             )}
           </div>
-        ) : (
-          <span className="text-sm text-muted-foreground">
-            Log in to upload screenshots to your pod
-          </span>
         )}
       </div>
 
@@ -562,7 +990,7 @@ export function AppDetail() {
             <div
               key={p.source || i}
               className="group relative"
-              draggable={manage && !flowEditing}
+              draggable={manage && !flowEditing && !replacing}
               onDragStart={() => (dragIdx.current = i)}
               onDragOver={(e) => manage && !flowEditing && e.preventDefault()}
               onDrop={() => manage && !flowEditing && onDrop(i)}
@@ -583,10 +1011,32 @@ export function AppDetail() {
               ) : (
                 <Link
                   to={`/screen/${encodeURIComponent(app.id)}?i=${i}`}
+                  viewTransition
+                  state={{ from: window.location.pathname + window.location.search }}
+                  onClick={(e) => armScreenTransition(e.currentTarget, app.id, i)}
                   className="block transition hover:opacity-90"
                 >
-                  {frame}
+                  <span
+                    data-vt="shot"
+                    className="block"
+                    style={{ viewTransitionName: returnScreenTransitionName(app.id, i) }}
+                  >
+                    {frame}
+                  </span>
                 </Link>
+              )}
+              {replacing?.p.source === p.source && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-[1.6rem] bg-black/60 text-white backdrop-blur-sm">
+                  {replacing.preview && (
+                    <img
+                      src={replacing.preview}
+                      alt=""
+                      className="absolute inset-0 -z-10 h-full w-full rounded-[1.6rem] object-cover opacity-40"
+                    />
+                  )}
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="text-xs font-medium">Uploading new version…</span>
+                </div>
               )}
               {flowEditing
                 ? selected && (
@@ -602,6 +1052,15 @@ export function AppDetail() {
                       >
                         <GripVertical className="h-4 w-4" />
                       </span>
+                      <button
+                        onClick={() => askReplace(p)}
+                        disabled={busy}
+                        aria-label="Upload a new version"
+                        title="Upload a new version"
+                        className="absolute right-20 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-black/80 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={() => openEdit(p)}
                         disabled={busy}
@@ -629,6 +1088,14 @@ export function AppDetail() {
             </div>
           );
         })}
+        {uploading.map((u) => (
+          <UploadingCard
+            key={u.id}
+            preview={u.preview}
+            aspect={view === "desktop" ? "aspect-[16/10]" : "aspect-[9/19.5]"}
+            rounded={view === "desktop" ? "rounded-xl" : "rounded-[1.6rem]"}
+          />
+        ))}
         {isLoggedIn && (
           <button
             onClick={() => fileRef.current?.click()}

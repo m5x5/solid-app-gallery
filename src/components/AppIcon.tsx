@@ -2,16 +2,11 @@ import { useState, useEffect } from "react";
 import { initialsFor, type App } from "@/lib/apps";
 import { cn } from "@/lib/utils";
 
-// App icon with a quality-first fallback chain. DuckDuckGo's icon service
-// resolves the site's best icon server-side (apple-touch-icon / web-manifest
-// icons / high-res favicon), which is sharper than a bare favicon; we fall back
-// to the domain favicon (Google s2), then the app's initials. <img> loads
-// cross-origin without CORS, so onError just walks down the list.
+// App icon: the app's own icon as resolved by api/icon.ts (web-manifest icon,
+// apple-touch-icon, or the largest favicon the site declares) — nothing from
+// third-party favicon services. If the site has none, the app's initials.
 function iconCandidates(app: App): string[] {
-  const out: string[] = [];
-  if (app.domain) out.push(`https://icons.duckduckgo.com/ip3/${app.domain}.ico`);
-  if (app.icon) out.push(app.icon); // favicon (Google s2) fallback
-  return out;
+  return app.icon ? [app.icon] : [];
 }
 
 export function AppIcon({
@@ -19,11 +14,13 @@ export function AppIcon({
   size = 24,
   className,
   rounded = "rounded-md",
+  style,
 }: {
   app: App;
   size?: number;
   className?: string;
   rounded?: string;
+  style?: React.CSSProperties;
 }) {
   const candidates = iconCandidates(app);
   const [idx, setIdx] = useState(0);
@@ -38,7 +35,7 @@ export function AppIcon({
         rounded,
         className
       )}
-      style={{ width: size, height: size, fontSize: Math.max(9, size * 0.32) }}
+      style={{ width: size, height: size, fontSize: Math.max(9, size * 0.32), ...style }}
     >
       {src ? (
         <img

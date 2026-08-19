@@ -13,6 +13,7 @@ import {
   DEFAULT_IDP,
 } from "./solid-auth";
 import { isAdmin as checkIsAdmin, getProfile } from "./solid-data";
+import { ADMIN_WEBID } from "@/config";
 
 type Ctx = {
   isLoggedIn: boolean;
@@ -20,6 +21,9 @@ type Ctx = {
   name?: string;
   avatar?: string;
   isAdmin: boolean;
+  // The catalog owner (the admin pod's WebID) — the only one who may manage
+  // moderators. Moderators (isAdmin) can publish/review but not change the group.
+  isOwner: boolean;
   loading: boolean;
   login: (idp?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -80,6 +84,7 @@ export function SolidProvider({ children }: { children: ReactNode }) {
     name: profile.name,
     avatar: profile.avatar,
     isAdmin: admin,
+    isOwner: !!webId && webId === ADMIN_WEBID,
     loading,
     login: (idp = DEFAULT_IDP) => startLogin(idp),
     logout: async () => {

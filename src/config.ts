@@ -23,3 +23,8 @@ export const VIDEOS_BASE = `${GALLERY_ROOT}videos/`;
 // Where new submissions and the admin inbox live.
 export const SUBMISSIONS_DIR = `${GALLERY_ROOT}submissions/`;
 export const ADMIN_INBOX = `${ADMIN_POD}inbox/`;
+
+// Where people can nudge the admin about moderator requests. Set per
+// deployment (VITE_ADMIN_MATRIX="@you:matrix.org"); the UI hides the line
+// when unset.
+export const ADMIN_MATRIX: string = import.meta.env?.VITE_ADMIN_MATRIX || "";

@@ -1,6 +1,7 @@
 import { Wifi, BatteryFull, Signal } from "lucide-react";
 import { accentFor, initialsFor, type App } from "@/lib/apps";
 import { cn } from "@/lib/utils";
+import { responsiveImg } from "@/lib/img";
 
 // A phone mockup. If `image` is given it shows a real screenshot; otherwise a
 // synthetic "screen" generated from the app's identity (Mobbin-style placeholder).
@@ -11,12 +12,18 @@ export function PhoneFrame({
   className,
   variant = "screen",
   step = 0,
+  sizes = "(max-width: 640px) 45vw, 230px",
+  priority = false,
 }: {
   app: App;
   image?: string;
   className?: string;
   variant?: "screen" | "card";
   step?: number;
+  // Rendered width hint for srcset selection (CSS `sizes` syntax).
+  sizes?: string;
+  // Above-the-fold: fetch eagerly and first; everything else lazy.
+  priority?: boolean;
 }) {
   const accent = accentFor(app.id);
   return (
@@ -28,10 +35,13 @@ export function PhoneFrame({
     >
       {image ? (
         <img
-          src={image}
+          {...responsiveImg(image, sizes)}
           alt={app.name}
           width={180}
           height={390}
+          decoding="async"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           className="h-full w-full object-cover"
         />
       ) : (

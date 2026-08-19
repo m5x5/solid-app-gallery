@@ -1,6 +1,6 @@
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import App from "./App";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import App, { routes } from "./App";
 import { SolidProvider } from "@/lib/solid-context";
 import { BookmarksProvider } from "@/lib/bookmarks";
 import { DeviceProvider } from "@/lib/device-context";
@@ -36,15 +36,22 @@ initCatalog()
       console.warn("[gallery] admin pod unreachable — no catalog loaded");
     // NOTE: no React.StrictMode — its double-invoked effects would call
     // handleIncomingRedirect twice and consume the one-time OIDC auth code twice.
-    root.render(
-      <BrowserRouter>
-        <SolidProvider>
-          <BookmarksProvider>
-            <DeviceProvider>
-              <App />
-            </DeviceProvider>
-          </BookmarksProvider>
-        </SolidProvider>
-      </BrowserRouter>
-    );
+    // A data router (not <BrowserRouter>) so <Link viewTransition> can drive
+    // the View Transitions API. App keeps its own <Routes>; the providers need
+    // router context (useSearchParams), so they live inside the route element.
+    const router = createBrowserRouter([
+      {
+        element: (
+          <SolidProvider>
+            <BookmarksProvider>
+              <DeviceProvider>
+                <App />
+              </DeviceProvider>
+            </BookmarksProvider>
+          </SolidProvider>
+        ),
+        children: routes,
+      },
+    ]);
+    root.render(<RouterProvider router={router} />);
   });

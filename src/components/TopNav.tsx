@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Bookmark, Globe, Bell, Plus, LogOut, User, Menu, Loader2 } from "lucide-react";
+import { Bookmark, Plus, LogOut, User, Menu, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -18,6 +18,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SearchBox } from "@/components/SearchBox";
 import { useSolid } from "@/lib/solid-context";
 import { useBookmarks } from "@/lib/bookmarks";
 import { DEFAULT_IDP } from "@/lib/solid-auth";
@@ -47,7 +48,6 @@ export function TopNav() {
   const { isLoggedIn, webId, name, avatar, login, logout } = useSolid();
   const { count: bookmarkCount } = useBookmarks();
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
   // Starts empty so the picker's default state is the full provider list —
   // typing narrows it, it doesn't pre-fill a URL the filter has to undo.
   const [idp, setIdp] = useState("");
@@ -85,10 +85,6 @@ export function TopNav() {
     login(url).catch(() => setPendingUrl(null));
   }
 
-  function onSearch(e: React.FormEvent) {
-    e.preventDefault();
-    navigate(`/screens?q=${encodeURIComponent(query)}`);
-  }
 
   const initials = (() => {
     if (name) return name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
@@ -103,44 +99,52 @@ export function TopNav() {
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-border bg-background/80 px-4 backdrop-blur md:px-6">
-      <Link to="/" className="flex items-center gap-2 font-bold">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          ◆
+      <Link to="/" className="flex shrink-0 items-center gap-2 font-bold">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <svg viewBox="146 146 220 220" className="h-4 w-4" aria-hidden="true">
+            <path d="M256 146 L366 256 L256 366 L146 256 Z" fill="currentColor" />
+          </svg>
         </span>
-        <span className="hidden sm:inline">Solid Gallery</span>
+        <span className="hidden whitespace-nowrap sm:inline">Solid Gallery</span>
       </Link>
-      <nav className="ml-2 hidden items-center gap-4 text-sm font-medium text-muted-foreground md:flex">
-        <Link to="/" className="text-foreground">
-          Apps
-        </Link>
-        <Link to="/participation" className="hover:text-foreground">
-          Participation
-        </Link>
-      </nav>
-
-      <form
-        onSubmit={onSearch}
-        className="relative mx-auto flex w-full max-w-xl items-center"
-      >
-        <Search className="absolute left-4 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search Solid apps & services…"
-          className="h-11 rounded-full pl-11"
-        />
-      </form>
+      <SearchBox />
 
       <div className="flex items-center gap-1.5">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Menu">
-              <Menu className="h-5 w-5" />
+            {/* Mobile menu trigger: the user's avatar when signed in (same menu),
+                the burger otherwise. */}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={isLoggedIn ? "Account menu" : "Menu"}
+              className="md:hidden"
+            >
+              {isLoggedIn ? (
+                <Avatar className="h-7 w-7">
+                  {avatar && !avatarError ? (
+                    <img
+                      src={avatar}
+                      alt=""
+                      className="aspect-square h-full w-full object-cover"
+                      onError={() => setAvatarError(true)}
+                    />
+                  ) : (
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  )}
+                </Avatar>
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {isLoggedIn && (
-              <div className="flex items-center gap-2 px-2.5 py-2">
+              <DropdownMenuItem
+                onClick={() => webId && navigate(`/author/${encodeURIComponent(webId)}`)}
+                className="items-center gap-2 px-2.5 py-2 md:hidden"
+                title="Your profile & activity"
+              >
                 <Avatar className="h-8 w-8">
                   {avatar && !avatarError ? (
                     <img
@@ -159,9 +163,9 @@ export function TopNav() {
                     {webId}
                   </div>
                 </div>
-              </div>
+              </DropdownMenuItem>
             )}
-            <div className="px-1 pb-1 pt-1">
+            <div className="px-1 pb-1 pt-1 md:hidden">
               <DropdownMenuItem
                 onClick={() => navigate("/submit")}
                 className="justify-center bg-primary font-semibold text-primary-foreground hover:bg-primary/90 focus:bg-primary/90"
@@ -169,27 +173,25 @@ export function TopNav() {
                 <Plus className="h-4 w-4" /> Submit app
               </DropdownMenuItem>
             </div>
-            <DropdownMenuSeparator />
+            <div className="md:hidden">
+              <DropdownMenuSeparator />
+            </div>
             <DropdownMenuItem onClick={() => navigate("/bookmarks")}>
               <Bookmark className="h-4 w-4" />
               Bookmarks{bookmarkCount > 0 ? ` (${bookmarkCount})` : ""}
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Globe className="h-4 w-4" /> Language
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Bell className="h-4 w-4" /> Notifications
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {isLoggedIn ? (
-              <DropdownMenuItem className="text-destructive" onClick={() => logout()}>
-                <LogOut className="h-4 w-4" /> Log out
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={() => setLoginOpen(true)}>
-                <User className="h-4 w-4" /> Log in
-              </DropdownMenuItem>
-            )}
+            <div className="md:hidden">
+              <DropdownMenuSeparator />
+              {isLoggedIn ? (
+                <DropdownMenuItem className="text-destructive" onClick={() => logout()}>
+                  <LogOut className="h-4 w-4" /> Log out
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => setLoginOpen(true)}>
+                  <User className="h-4 w-4" /> Log in
+                </DropdownMenuItem>
+              )}
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button
@@ -207,14 +209,68 @@ export function TopNav() {
             )}
           </Link>
         </Button>
-        <Button variant="ghost" size="icon" className="hidden md:inline-flex">
-          <Globe className="h-5 w-5" />
+        <Button asChild variant="secondary" size="sm" className="ml-1 hidden md:inline-flex">
+          <Link to="/submit">
+            <Plus className="h-4 w-4" /> Submit app
+          </Link>
         </Button>
-        <Button variant="ghost" size="icon" className="hidden md:inline-flex">
-          <Bell className="h-5 w-5" />
-        </Button>
+        {isLoggedIn ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Account"
+                className="hidden md:inline-flex"
+              >
+                <Avatar className="h-7 w-7">
+                  {avatar && !avatarError ? (
+                    <img
+                      src={avatar}
+                      alt=""
+                      className="aspect-square h-full w-full object-cover"
+                      onError={() => setAvatarError(true)}
+                    />
+                  ) : (
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  )}
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => webId && navigate(`/author/${encodeURIComponent(webId)}`)}
+                className="flex-col items-start gap-0 px-2.5 py-2"
+                title="Your profile & activity"
+              >
+                {name && <div className="truncate text-sm font-medium">{name}</div>}
+                <div className="max-w-[180px] truncate text-xs text-muted-foreground">
+                  {webId}
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => webId && navigate(`/author/${encodeURIComponent(webId)}`)}
+              >
+                <User className="h-4 w-4" /> Your activity
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive" onClick={() => logout()}>
+                <LogOut className="h-4 w-4" /> Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button
+            size="sm"
+            className="ml-1 hidden md:inline-flex"
+            onClick={() => setLoginOpen(true)}
+          >
+            <User className="h-4 w-4" /> Log in
+          </Button>
+        )}
 
-        {/* Submit app / log in / log out live only in the burger menu above */}
+        {/* Log in / log out live only in the burger menu above; Submit app is
+            promoted to the toolbar on desktop and stays in the menu on mobile. */}
         <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
           <DialogContent>
             <DialogHeader>

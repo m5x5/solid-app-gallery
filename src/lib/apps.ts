@@ -18,6 +18,17 @@ export type App = {
   icon?: string;
   isSoftware: boolean;
   authors?: Author[];
+  // URL of the submission (.ttl in the submitter's pod) this record came from.
+  source?: string;
+  // Set (ISO date) when the admin soft-deleted the record; hidden everywhere
+  // except direct links, where it renders as removed.
+  deleted?: string;
+  deletedReason?: string;
+  // Reason the admin excluded it from the gallery ("Not an app: testing tool"…).
+  excluded?: string;
+  // Provenance recorded on publish (see publishSubmissionToCatalog).
+  contributor?: string; // submitter WebID
+  dateSubmitted?: string;
   // Turtle serialization of this record's direct triples in the catalog.
   rdf?: string;
 };
@@ -35,7 +46,13 @@ export type Author = {
 
 export type Category = { key: string; label: string; count: number };
 export type Device = "mobile" | "desktop";
-export type ScreenFrame = { path: string; tags: string[]; formFactor?: Device };
+export type ScreenFrame = {
+  path: string;
+  tags: string[];
+  formFactor?: Device;
+  creator?: string; // uploader WebID (recorded on publish)
+  created?: string;
+};
 export type ScreenVideo = { label: string; path: string };
 export type ScreenEntry = {
   path: string;
@@ -56,7 +73,7 @@ const HIDDEN_IDS = new Set<string>([
   "urn:uuid:d785cb19-0d53-48f7-a92a-65d6b74a8388", // N. Kensington (duplicate)
   "urn:uuid:65ec3b50-48c0-4d65-9670-13135addc3c5", // Solid Health AU (typo githu.com)
 ]);
-const hidden = (a: App) => isArchived(a) || HIDDEN_IDS.has(a.id);
+const hidden = (a: App) => isArchived(a) || HIDDEN_IDS.has(a.id) || !!a.deleted || !!a.excluded;
 
 // Solid servers are infrastructure, not apps — never shown.
 const isServer = (a: App) => a.categoryKey === "PodServer";
@@ -114,6 +131,32 @@ export async function initCatalog(): Promise<"pod" | "empty"> {
   return "empty";
 }
 
+// Re-fetch the catalog after an in-app publish (review queue, admin actions) so
+// the new record/screens show up without a hard reload. Subscribers (App) re-key
+// the page tree so every view recomputes from the fresh module-level lists.
+const listeners = new Set<() => void>();
+export function subscribeCatalog(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+export async function reloadCatalog(): Promise<void> {
+  const d = await fetchCatalog();
+  if (d && d.apps.length) {
+    appsAll = d.apps;
+    partAll = d.participation;
+    SCREENS = d.screens;
+    rebuild();
+    listeners.forEach((fn) => fn());
+  }
+}
+
+// The catalog record published from a given submission URL, if any.
+export function appBySource(submissionUrl: string): App | undefined {
+  return [...appsAll, ...partAll].find((a) => a.source === submissionUrl);
+}
+
 // getApp resolves ANY id (direct links / bookmarks), incl. servers/hidden.
 export function getApp(id: string): App | undefined {
   return [...appsAll, ...partAll].find((a) => a.id === id);
@@ -128,6 +171,24 @@ export function appsByAuthor(authorId: string): { author?: Author; apps: App[] }
     .flatMap((a) => a.authors || [])
     .find((x) => x.id === authorId);
   return { author, apps: out };
+}
+
+// Everything a WebID contributed to the catalog: apps they submitted and
+// screenshots they uploaded (only what was recorded on publish — older items
+// have no provenance). Hidden apps are excluded, like everywhere else.
+export function contributionsBy(webId: string): {
+  submitted: App[];
+  screenshots: { app: App; frame: ScreenFrame; index: number }[];
+} {
+  const visible = [...appsAll, ...partAll].filter((a) => !hidden(a));
+  const submitted = visible.filter((a) => a.contributor === webId);
+  const screenshots: { app: App; frame: ScreenFrame; index: number }[] = [];
+  for (const a of visible) {
+    (SCREENS[a.id]?.frames || []).forEach((frame, index) => {
+      if (frame.creator === webId) screenshots.push({ app: a, frame, index });
+    });
+  }
+  return { submitted, screenshots };
 }
 
 // Recorded flow videos (webm) for this app, each with a label.

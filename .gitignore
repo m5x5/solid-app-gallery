@@ -7,3 +7,4 @@ test-results
 playwright-report
 .video-tmp
 *.log
+.repaired-catalog.ttl

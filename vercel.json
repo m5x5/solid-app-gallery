@@ -4,7 +4,41 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/shapes/gallery-shacl", "destination": "/api/shapes-gallery" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api/robots"
+    },
+    {
+      "source": "/shapes/gallery-shacl",
+      "destination": "/api/shapes-gallery"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "images": {
+    "sizes": [
+      256,
+      384,
+      640,
+      1080,
+      1920
+    ],
+    "formats": [
+      "image/avif",
+      "image/webp"
+    ],
+    "minimumCacheTTL": 86400,
+    "remotePatterns": [
+      {
+        "protocol": "https",
+        "hostname": "pod.mpeters.dev"
+      }
+    ]
+  }
 }

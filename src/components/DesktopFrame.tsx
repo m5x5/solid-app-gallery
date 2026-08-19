@@ -1,5 +1,6 @@
 import { accentFor, initialsFor, type App } from "@/lib/apps";
 import { cn } from "@/lib/utils";
+import { responsiveImg } from "@/lib/img";
 
 // A browser-window mockup for desktop (landscape) screenshots — many Solid apps
 // are desktop-first, so wide captures get a window chrome instead of a phone.
@@ -7,10 +8,14 @@ export function DesktopFrame({
   app,
   image,
   className,
+  sizes = "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw",
+  priority = false,
 }: {
   app: App;
   image?: string;
   className?: string;
+  sizes?: string;
+  priority?: boolean;
 }) {
   return (
     <div
@@ -21,10 +26,13 @@ export function DesktopFrame({
     >
       {image ? (
         <img
-          src={image}
+          {...responsiveImg(image, sizes)}
           alt={app.name}
           width={320}
           height={200}
+          decoding="async"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           className="aspect-[16/10] w-full bg-zinc-950 object-contain"
         />
       ) : (

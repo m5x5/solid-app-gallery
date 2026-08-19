@@ -147,10 +147,24 @@ export async function fetchCatalog(): Promise<CatalogData | null> {
       modified: lit(id, "modified"),
       authors: authorsFor(id),
       domain,
-      icon: domain
-        ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128`
-        : undefined,
+      // Resolved server-side from the site's own manifest / apple-touch-icon /
+      // favicon (api/icon.ts) — no third-party icon services, no 16px favicons.
+      icon:
+        landingPage || repository
+          ? `/api/icon?url=${encodeURIComponent(landingPage || repository || "")}`
+          : undefined,
       isSoftware,
+      // The submitter's pod record this app was published from (if any) —
+      // lets the app link a submission back to its live catalog entry.
+      source: store.getObjects(id, "http://purl.org/dc/terms/source", null)[0]?.value,
+      // Soft-deleted by the admin (see markAppDeleted) — hidden from listings.
+      deleted: lit(id, "deleted") || undefined,
+      deletedReason: lit(id, "deletedReason"),
+      // Admin marked it as not an app (library / tool / spec) — not listed.
+      excluded: lit(id, "excluded") || undefined,
+      // Who submitted it and when (recorded on publish; absent for older records).
+      contributor: store.getObjects(id, "http://purl.org/dc/terms/contributor", null)[0]?.value,
+      dateSubmitted: store.getObjects(id, "http://purl.org/dc/terms/dateSubmitted", null)[0]?.value,
       rdf: await serializeSubject(store, id),
     };
     (region === "participation" ? participation : apps).push(app);
@@ -170,11 +184,19 @@ export async function fetchCatalog(): Promise<CatalogData | null> {
         const w = Number(store.getObjects(img, SCHEMA + "width", null)[0]?.value || 0);
         const h = Number(store.getObjects(img, SCHEMA + "height", null)[0]?.value || 0);
         const formFactor: "mobile" | "desktop" = w > h ? "desktop" : "mobile";
-        return { n, path, tags, formFactor };
+        const creator = store.getObjects(img, SCHEMA + "creator", null)[0]?.value;
+        const created = store.getObjects(img, SCHEMA + "dateCreated", null)[0]?.value;
+        return { n, path, tags, formFactor, creator, created };
       })
       .filter((f) => f.path)
       .sort((x, y) => x.n - y.n)
-      .map((f) => ({ path: f.path as string, tags: f.tags, formFactor: f.formFactor }));
+      .map((f) => ({
+        path: f.path as string,
+        tags: f.tags,
+        formFactor: f.formFactor,
+        creator: f.creator,
+        created: f.created,
+      }));
 
     const videos = store.getObjects(id, SCHEMA + "video", null).map((v) => ({
       label: store.getObjects(v.value, SCHEMA + "name", null)[0]?.value || "Recording",

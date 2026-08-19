@@ -11,6 +11,7 @@ import {
 } from "@/lib/apps";
 import { DiscoverCard } from "@/components/cards";
 import { useDevice } from "@/lib/device-context";
+import { useHead, JsonLd, siteJsonLd, itemListJsonLd } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -19,7 +20,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-const TABS = ["Latest", "Most popular", "Top rated"] as const;
+const TABS = ["Latest", "Most popular"] as const;
 type Tab = (typeof TABS)[number];
 
 const FLOW_ACTION_LABELS: Record<string, string> = {
@@ -53,17 +54,9 @@ function QuickLinks() {
         to: `/flows?action=${p.action}`,
       })),
     },
-    {
-      title: "Participate",
-      links: [
-        { label: "Get a Pod", to: "/participation" },
-        { label: "Join a Discussion", to: "/participation" },
-        { label: "Submit your app", to: "/submit" },
-      ],
-    },
   ];
   return (
-    <div className="hidden gap-x-6 gap-y-8 md:grid md:grid-cols-4 md:gap-x-10">
+    <div className="hidden gap-x-6 gap-y-8 md:grid md:grid-cols-3 md:gap-x-10">
       {cols.map((col) => (
         <div key={col.title}>
           <div className="mb-3 text-sm text-muted-foreground">{col.title}</div>
@@ -321,11 +314,6 @@ export function Discover() {
           new Date(b.modified || 0).getTime() -
           new Date(a.modified || 0).getTime()
       );
-    } else if (tab === "Top rated") {
-      list.sort((a, b) =>
-        (a.status === "Production" ? -1 : 1) -
-        (b.status === "Production" ? -1 : 1)
-      );
     } else {
       list.sort((a, b) => (b.description.length || 0) - (a.description.length || 0));
     }
@@ -337,8 +325,24 @@ export function Discover() {
       .map((e) => e.a);
   }, [tab, device, cat]);
 
+  useHead({
+    description:
+      "Discover Solid apps and services: browse real screenshots, onboarding and login flows, and find apps that store your data in your own Pod.",
+    path: "/",
+  });
+
   return (
     <div className="mx-auto max-w-[1400px] px-4 pb-8 md:px-8 md:py-8">
+      <JsonLd
+        data={[
+          ...siteJsonLd(),
+          itemListJsonLd(
+            catLabel ? `${catLabel} — Solid apps` : "Solid apps",
+            sorted,
+            `${location.origin}/`
+          ),
+        ]}
+      />
       <QuickLinks />
 
       <div className="mt-0 flex items-center justify-between border-b border-border md:mt-12">
@@ -389,8 +393,8 @@ export function Discover() {
             : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
         )}
       >
-        {sorted.map((app) => (
-          <DiscoverCard key={app.id} app={app} />
+        {sorted.map((app, idx) => (
+          <DiscoverCard key={app.id} app={app} priority={idx < 4} />
         ))}
       </div>
 

@@ -43,3 +43,22 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* View transitions (react-router <Link viewTransition>): a quick cross-fade
+   for the page, while elements sharing a view-transition-name (author avatar
+   + name between an app page and the author page) morph in place. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+::view-transition-group(*) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
