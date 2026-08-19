@@ -187,112 +187,105 @@ function Capability({
 
 function CapabilityFooter() {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const validatorUrl = `https://application-capability-validator.mpeters.dev/?url=${encodeURIComponent(origin)}`;
   return (
-    <footer className="mt-16 border-t border-border pt-6 text-sm">
-      <details className="rounded-xl border border-border bg-card p-3 text-xs">
-        <summary className="cursor-pointer select-none font-medium text-foreground">
-          Application Capability (RDFa)
-        </summary>
-        <div
-          className="mt-3 space-y-2"
-          resource={`${origin}/#app`}
-          typeof="ac:Application"
-          prefix="ac: https://www.w3.org/ns/ac# odrl: http://www.w3.org/ns/odrl/2/ as: https://www.w3.org/ns/activitystreams# ex: http://example.org# schema: http://schema.org/ oa: http://www.w3.org/ns/oa#"
-        >
-          <p className="text-muted-foreground">
-            <span property="as:name" className="font-semibold text-foreground">
-              Solid Gallery
-            </span>{" "}
-            — described per the{" "}
-            <a
-              href="https://dokieli.github.io/application-capability/"
-              target="_blank"
-              rel="noopener"
-              className="underline hover:text-foreground"
-            >
-              Application Capability
-            </a>{" "}
-            vocabulary.
-          </p>
-          <dl className="grid gap-1.5 sm:grid-cols-2">
-            <Capability
-              id="capability-view"
-              origin={origin}
-              action="odrl:read"
-              accept="text/html"
-              template={`${origin}/app/{open}`}
-              variable="open"
-              mapsTo="ac:open"
-            >
-              capability-view
-            </Capability>
-            <Capability
-              id="capability-search"
-              origin={origin}
-              action="odrl:read"
-              accept="text/html"
-              template={`${origin}/screens?q={search}`}
-              variable="search"
-              mapsTo="ac:search"
-            >
-              capability-search
-            </Capability>
-            <Capability
-              id="capability-read-apps"
-              origin={origin}
-              action="odrl:read"
-              accept="text/turtle"
-              resourceType={{ curie: "ex:Software", href: `${EX}Software` }}
-              shapes={[{ label: "AppAssetsShape", fragment: "AppAssetsShape" }]}
-            >
-              capability-read-apps
-            </Capability>
-            <Capability
-              id="capability-read-screenshots"
-              origin={origin}
-              action="odrl:read"
-              accept="text/turtle"
-              resourceType={{ curie: "schema:ImageObject", href: `${SCHEMA}ImageObject` }}
-              shapes={[{ label: "ImageObjectShape", fragment: "ImageObjectShape" }]}
-            >
-              capability-read-screenshots
-            </Capability>
-            <Capability
-              id="capability-read-videos"
-              origin={origin}
-              action="odrl:read"
-              accept="text/turtle"
-              resourceType={{ curie: "schema:VideoObject", href: `${SCHEMA}VideoObject` }}
-              shapes={[{ label: "VideoObjectShape", fragment: "VideoObjectShape" }]}
-            >
-              capability-read-videos
-            </Capability>
-            <Capability
-              id="capability-read-flows"
-              origin={origin}
-              action="odrl:read"
-              accept="text/turtle"
-              resourceType={{ curie: "schema:ItemList", href: `${SCHEMA}ItemList` }}
-              shapes={[
-                { label: "FlowShape", fragment: "FlowShape" },
-                { label: "ListItemShape", fragment: "ListItemShape" },
-              ]}
-            >
-              capability-read-flows
-            </Capability>
-            <Capability
-              id="capability-read-comments"
-              origin={origin}
-              action="odrl:read"
-              accept="application/ld+json"
-              resourceType={{ curie: "oa:Annotation", href: `${OA}Annotation` }}
-              shapes={[{ label: "AnnotationShape", fragment: "AnnotationShape" }]}
-            >
-              capability-read-comments
-            </Capability>
-          </dl>
-        </div>
-      </details>
+    <footer className="mt-16 border-t border-border pt-6 text-sm text-muted-foreground">
+      {/* Machine-readable application capability description (RDFa) — kept in
+          the DOM for discovery; the validator link below is the human entry point. */}
+      <div
+        className="hidden"
+        resource={`${origin}/#app`}
+        typeof="ac:Application"
+        prefix="ac: https://www.w3.org/ns/ac# odrl: http://www.w3.org/ns/odrl/2/ as: https://www.w3.org/ns/activitystreams# ex: http://example.org# schema: http://schema.org/ oa: http://www.w3.org/ns/oa#"
+      >
+        <span property="as:name">Solid Gallery</span>
+        <dl>
+          <Capability
+            id="capability-view"
+            origin={origin}
+            action="odrl:read"
+            accept="text/html"
+            template={`${origin}/app/{open}`}
+            variable="open"
+            mapsTo="ac:open"
+          >
+            capability-view
+          </Capability>
+          <Capability
+            id="capability-search"
+            origin={origin}
+            action="odrl:read"
+            accept="text/html"
+            template={`${origin}/screens?q={search}`}
+            variable="search"
+            mapsTo="ac:search"
+          >
+            capability-search
+          </Capability>
+          <Capability
+            id="capability-read-apps"
+            origin={origin}
+            action="odrl:read"
+            accept="text/turtle"
+            resourceType={{ curie: "ex:Software", href: `${EX}Software` }}
+            shapes={[{ label: "AppAssetsShape", fragment: "AppAssetsShape" }]}
+          >
+            capability-read-apps
+          </Capability>
+          <Capability
+            id="capability-read-screenshots"
+            origin={origin}
+            action="odrl:read"
+            accept="text/turtle"
+            resourceType={{ curie: "schema:ImageObject", href: `${SCHEMA}ImageObject` }}
+            shapes={[{ label: "ImageObjectShape", fragment: "ImageObjectShape" }]}
+          >
+            capability-read-screenshots
+          </Capability>
+          <Capability
+            id="capability-read-videos"
+            origin={origin}
+            action="odrl:read"
+            accept="text/turtle"
+            resourceType={{ curie: "schema:VideoObject", href: `${SCHEMA}VideoObject` }}
+            shapes={[{ label: "VideoObjectShape", fragment: "VideoObjectShape" }]}
+          >
+            capability-read-videos
+          </Capability>
+          <Capability
+            id="capability-read-flows"
+            origin={origin}
+            action="odrl:read"
+            accept="text/turtle"
+            resourceType={{ curie: "schema:ItemList", href: `${SCHEMA}ItemList` }}
+            shapes={[
+              { label: "FlowShape", fragment: "FlowShape" },
+              { label: "ListItemShape", fragment: "ListItemShape" },
+            ]}
+          >
+            capability-read-flows
+          </Capability>
+          <Capability
+            id="capability-read-comments"
+            origin={origin}
+            action="odrl:read"
+            accept="application/ld+json"
+            resourceType={{ curie: "oa:Annotation", href: `${OA}Annotation` }}
+            shapes={[{ label: "AnnotationShape", fragment: "AnnotationShape" }]}
+          >
+            capability-read-comments
+          </Capability>
+        </dl>
+      </div>
+
+      <a
+        href={validatorUrl}
+        target="_blank"
+        rel="noopener"
+        className="underline hover:text-foreground"
+      >
+        View Application Capabilities
+      </a>
     </footer>
   );
 }
