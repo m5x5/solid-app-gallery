@@ -47,9 +47,11 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   }, [urlDesktop, pref]);
 
   // Keep the param on the URL after in-app navigations that dropped it, so the
-  // current URL is always shareable.
+  // current URL is always shareable. Skip during OIDC callbacks (?code=...) so
+  // we don't inject extra params into the redirect URL before the auth library
+  // has a chance to process it.
   useEffect(() => {
-    if (pref === "desktop" && !urlDesktop) {
+    if (pref === "desktop" && !urlDesktop && !params.get("code")) {
       const next = new URLSearchParams(params);
       next.set("device", "desktop");
       setParams(next, { replace: true });
