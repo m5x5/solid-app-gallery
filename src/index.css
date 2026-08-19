@@ -62,3 +62,22 @@
     animation: none !important;
   }
 }
+
+/* Bottom-pinned UI stays above the on-screen keyboard.
+   `env(keyboard-inset-height)` comes from the VirtualKeyboard API
+   (navigator.virtualKeyboard.overlaysContent = true, see lib/virtual-keyboard.ts);
+   `--keyboard-inset` is the VisualViewport fallback for engines without it. */
+@layer utilities {
+  @media (max-width: 639px) {
+    .keyboard-aware {
+      bottom: max(env(keyboard-inset-height, 0px), var(--keyboard-inset, 0px));
+      max-height: calc(85vh - max(env(keyboard-inset-height, 0px), var(--keyboard-inset, 0px)));
+      transition: bottom 150ms ease-out;
+    }
+    /* While the keyboard is up it covers the home-indicator area, so the
+       safe-area bottom padding would just add a dead gap above the keys. */
+    .keyboard-open .keyboard-aware {
+      padding-bottom: 1.5rem;
+    }
+  }
+}
