@@ -93,7 +93,6 @@ export function AppDetail() {
   const [status, setStatus] = useState("");
   // A screenshot can show more than one flow (e.g. a combined login/signup
   // screen), so tag selection is multi-select rather than a single pattern.
-  const [tags, setTags] = useState<string[]>(["Dashboard"]);
   const [items, setItems] = useState<Preview[]>([]);
   const dragIdx = useRef<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -219,12 +218,6 @@ export function AppDetail() {
     );
   }
 
-  function toggleTag(tag: string) {
-    setTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  }
-
   // Files currently uploading, with local previews for their placeholder cards.
   const [uploading, setUploading] = useState<{ id: number; preview: string }[]>([]);
   const uploadFiles = useCallback(
@@ -240,7 +233,7 @@ export function AppDetail() {
       setStatus("Uploading…");
       try {
         for (const p of pending) {
-          await uploadScreenshot(webId, app.id, p.file, p.file.name || "screenshot.png", tags);
+          await uploadScreenshot(webId, app.id, p.file, p.file.name || "screenshot.png", []);
           // Keep the placeholder until the grid has reloaded with the real file.
         }
         await loadShots(app.id, webId);
@@ -254,7 +247,7 @@ export function AppDetail() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [webId, app, tags]
+    [webId, app]
   );
 
   function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -832,33 +825,6 @@ export function AppDetail() {
         <h2 className="text-lg font-semibold">Screens</h2>
         {isLoggedIn && (
           <div className="flex flex-wrap items-center gap-3">
-            <div
-              className="flex flex-wrap items-center gap-1.5"
-              role="group"
-              aria-label="Flow tags for these screenshots"
-            >
-              <span className="text-xs text-muted-foreground">Flows:</span>
-              {SCREEN_PATTERNS.map((p) => {
-                const active = tags.includes(p);
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => toggleTag(p)}
-                    disabled={busy}
-                    aria-pressed={active}
-                    className={cn(
-                      "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-                      active
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {p}
-                  </button>
-                );
-              })}
-            </div>
             <input
               ref={fileRef}
               type="file"
