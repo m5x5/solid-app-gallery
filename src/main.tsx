@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import App, { routes } from "./App";
@@ -7,6 +8,14 @@ import { DeviceProvider } from "@/lib/device-context";
 import { initCatalog } from "@/lib/apps";
 import { solidFetch } from "@/lib/solid-auth";
 import "./index.css";
+
+Sentry.init({
+  dsn: import.meta.env.VITE_SENTRY_DSN,
+  integrations: [Sentry.browserTracingIntegration(), Sentry.replayIntegration()],
+  tracesSampleRate: 1.0,
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0,
+});
 
 // Dev-only upload helpers: admin maintenance scripts (e.g. publishing media or
 // editing catalog.ttl) push into the pod through this authenticated session.
