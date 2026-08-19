@@ -311,7 +311,7 @@ export function AppDetail() {
     try {
       const n = await publishScreenshotsToCatalog(
         app.id,
-        shotUrls.map((url) => ({ url, tags, by: webId || undefined }))
+        shotUrls.map((url) => ({ url, tags: [], by: webId || undefined }))
       );
       // The catalog now owns a copy of these images — remove the uploader's
       // originals so the same screenshot doesn't show up twice after reload.
