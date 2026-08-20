@@ -64,13 +64,13 @@
 }
 
 /* Bottom-pinned UI stays above the on-screen keyboard.
-   `env(keyboard-inset-height)` comes from the VirtualKeyboard API
+   `--keyboard-inset` comes from the VirtualKeyboard API's boundingRect
    (navigator.virtualKeyboard.overlaysContent = true, see lib/virtual-keyboard.ts). */
 @layer utilities {
   @media (max-width: 639px) {
     .keyboard-aware {
-      bottom: env(keyboard-inset-height, 0px);
-      max-height: calc(85vh - env(keyboard-inset-height, 0px));
+      bottom: var(--keyboard-inset, 0px);
+      max-height: calc(85vh - var(--keyboard-inset, 0px));
       transition: bottom 150ms ease-out;
     }
     /* While the keyboard is up it covers the home-indicator area, so the

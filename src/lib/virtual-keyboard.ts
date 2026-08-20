@@ -1,13 +1,11 @@
 // Keeps bottom-pinned UI (the mobile bottom-sheet dialog, class
 // `keyboard-aware`) above the on-screen keyboard.
 //
-// 1. VirtualKeyboard API (Chromium/Android): opting into `overlaysContent`
-//    stops the browser from shrinking the layout viewport and instead exposes
-//    the keyboard's size to CSS as `env(keyboard-inset-height)`.
-// 2. Fallback (iOS Safari etc.): derive the keyboard height from the
-//    VisualViewport and publish it as the `--keyboard-inset` custom property.
-//
-// CSS consumes both via `.keyboard-aware` in index.css.
+// Uses the VirtualKeyboard API (Chromium/Android): opting into
+// `overlaysContent` stops the browser from shrinking the layout viewport, and
+// `vk.boundingRect.height` gives the keyboard's size, which we publish as the
+// `--keyboard-inset` custom property for `.keyboard-aware` in index.css.
+// No-op on engines without the API (e.g. iOS Safari).
 
 type VirtualKeyboard = EventTarget & {
   overlaysContent: boolean;
@@ -23,53 +21,32 @@ export function initVirtualKeyboard() {
       "position:fixed;top:0;left:0;z-index:9999;margin:0;padding:4px;font:11px monospace;background:#000c;color:#0f0;pointer-events:none";
     document.body.appendChild(dbg);
   }
-  const report = (src: string, extra: Record<string, unknown>) => {
-    if (!dbg) return;
-    const vv = window.visualViewport;
-    dbg.textContent = JSON.stringify(
-      {
-        src,
-        ...extra,
-        innerHeight: window.innerHeight,
-        vvHeight: vv?.height,
-        vvOffsetTop: vv?.offsetTop,
-        scrollY: window.scrollY,
-        inset: root.style.getPropertyValue("--keyboard-inset"),
-      },
-      null,
-      1
-    );
-  };
 
-  const setInset = (px: number) => {
-    const h = Math.max(0, Math.round(px));
+  const vk = (navigator as Navigator & { virtualKeyboard?: VirtualKeyboard }).virtualKeyboard;
+  if (!vk) return;
+
+  vk.overlaysContent = true;
+
+  const apply = () => {
+    const h = Math.max(0, Math.round(vk.boundingRect.height));
     root.style.setProperty("--keyboard-inset", `${h}px`);
     // Flag on <html> so CSS can drop keyboard-irrelevant spacing (e.g. the
     // safe-area padding) while the keyboard is open.
     root.classList.toggle("keyboard-open", h > 0);
+    if (dbg) {
+      dbg.textContent = JSON.stringify(
+        { rect: vk.boundingRect.toJSON(), innerHeight: window.innerHeight },
+        null,
+        1
+      );
+    }
   };
 
-  const vk = (navigator as Navigator & { virtualKeyboard?: VirtualKeyboard }).virtualKeyboard;
-  if (vk) {
-    vk.overlaysContent = true;
-    // Mirror into the custom property too, so one CSS rule covers every engine.
-    vk.addEventListener("geometrychange", () => {
-      setInset(vk.boundingRect.height);
-      report("virtualKeyboard", { rect: vk.boundingRect.toJSON() });
-    });
-    return;
-  }
-
-  const vv = window.visualViewport;
-  if (!vv) return;
-  const update = () => {
-    // Space below the visual viewport = keyboard (plus browser chrome, ~0 when
-    // the keyboard is up). Ignore small values caused by URL-bar resizing.
-    const gap = window.innerHeight - (vv.height + vv.offsetTop);
-    setInset(gap > 80 ? gap : 0);
-    report("visualViewport", { gap });
-  };
-  vv.addEventListener("resize", update);
-  vv.addEventListener("scroll", update);
-  update();
+  vk.addEventListener("geometrychange", () => {
+    apply();
+    // On Android Chrome, opening the keyboard also retracts the bottom URL
+    // bar; when that reflow lands after this event, boundingRect briefly
+    // under-reports the keyboard height. Re-sample once it settles.
+    setTimeout(apply, 150);
+  });
 }
