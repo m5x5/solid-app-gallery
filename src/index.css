@@ -64,8 +64,7 @@
 }
 
 /* Bottom-pinned UI stays above the on-screen keyboard.
-   `--keyboard-inset` comes from the VirtualKeyboard API's boundingRect
-   (navigator.virtualKeyboard.overlaysContent = true, see lib/virtual-keyboard.ts). */
+   `--keyboard-inset` comes from VisualViewport (see lib/virtual-keyboard.ts). */
 @layer utilities {
   @media (max-width: 639px) {
     .keyboard-aware {
@@ -74,9 +73,14 @@
       transition: bottom 150ms ease-out;
     }
     /* While the keyboard is up it covers the home-indicator area, so the
-       safe-area bottom padding would just add a dead gap above the keys. */
+       safe-area bottom padding would just add a dead gap above the keys.
+       The extra ~28px on top of that accounts for Chrome's keyboard
+       accessory bar (shows the page origin above the keyboard) — its
+       height isn't exposed to visualViewport/env(), so --keyboard-inset
+       undershoots by roughly that much. Harmless overscroll when the bar
+       isn't present. */
     .keyboard-open .keyboard-aware {
-      padding-bottom: 1.5rem;
+      padding-bottom: calc(1.5rem + 28px);
     }
   }
 }
