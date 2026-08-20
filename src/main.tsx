@@ -7,7 +7,10 @@ import { BookmarksProvider } from "@/lib/bookmarks";
 import { DeviceProvider } from "@/lib/device-context";
 import { initCatalog } from "@/lib/apps";
 import { solidFetch } from "@/lib/solid-auth";
+import { initVirtualKeyboard } from "@/lib/virtual-keyboard";
 import "./index.css";
+
+initVirtualKeyboard();
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
