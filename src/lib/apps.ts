@@ -14,6 +14,10 @@ export type App = {
   technicalKeyword?: string;
   socialKeyword?: string;
   modified?: string;
+  // Admin-curated discovery badge; independent of the record's modified date.
+  showUpdated?: boolean;
+  // App currently does not work; keep it in Help wanted even if it has shots.
+  nonFunctional?: boolean;
   domain?: string;
   icon?: string;
   isSoftware: boolean;
@@ -105,8 +109,10 @@ export let statuses: Category[] = [];
 
 function rebuild() {
   const visible = appsAll.filter((a) => !hidden(a));
-  apps = visible.filter((a) => !isServer(a) && hasAppScreen(a.id));
-  needsContribution = visible.filter((a) => !isServer(a) && !hasAppScreen(a.id));
+  apps = visible.filter((a) => !isServer(a) && hasAppScreen(a.id) && !a.nonFunctional);
+  needsContribution = visible.filter(
+    (a) => !isServer(a) && (a.nonFunctional || !hasAppScreen(a.id))
+  );
   participation = partAll.filter((a) => !hidden(a));
   // Categories derived from the loaded apps (key + label + count, desc).
   const counts = new Map<string, { key: string; label: string; count: number }>();

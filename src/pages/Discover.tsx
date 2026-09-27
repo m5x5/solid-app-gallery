@@ -25,6 +25,15 @@ import {
 
 const TABS = ["Latest", "Most popular"] as const;
 type Tab = (typeof TABS)[number];
+const RECENTLY_ADDED_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
+function homePriority(app: (typeof apps)[number], now: number): number {
+  if (app.showUpdated) return 0;
+  const addedAt = app.dateSubmitted ? Date.parse(app.dateSubmitted) : NaN;
+  if (Number.isFinite(addedAt) && now - addedAt >= 0 && now - addedAt < RECENTLY_ADDED_WINDOW_MS)
+    return 1;
+  return 2;
+}
 
 const FLOW_ACTION_LABELS: Record<string, string> = {
   Onboarding: "Onboarding",
@@ -328,11 +337,18 @@ export function Discover() {
     } else {
       list.sort((a, b) => (b.description.length || 0) - (a.description.length || 0));
     }
-    // Quality tiers first (real app UI → repository → docs → no screenshot),
+    // Updated and newly submitted apps rise above the normal listing. Then
+    // quality tiers (real app UI → repository → docs → no screenshot) apply,
     // preserving the tab's ordering within each tier (stable sort).
+    const now = Date.now();
     return list
       .map((a, idx) => ({ a, idx }))
-      .sort((x, y) => qualityRank(x.a.id) - qualityRank(y.a.id) || x.idx - y.idx)
+      .sort(
+        (x, y) =>
+          homePriority(x.a, now) - homePriority(y.a, now) ||
+          qualityRank(x.a.id) - qualityRank(y.a.id) ||
+          x.idx - y.idx
+      )
       .map((e) => e.a);
   }, [tab, device, cat, status]);
 

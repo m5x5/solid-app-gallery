@@ -1523,6 +1523,27 @@ export async function setAppExcluded(appId: string, reason: string | null): Prom
   await writeCatalogStore(store);
 }
 
+// Admin-curated catalog flags used by discovery and the Help wanted list.
+export async function setAppFlag(
+  appId: string,
+  flag: "showUpdated" | "nonFunctional",
+  enabled: boolean
+): Promise<void> {
+  const ttl = await (await solidFetch(CATALOG_URL)).text();
+  const store = new Store(new Parser().parse(ttl));
+  const { namedNode, literal } = DataFactory;
+  const subject = namedNode(appId);
+  const predicate = EX + flag;
+  store.removeQuads(store.getQuads(appId, predicate, null, null));
+  if (enabled)
+    store.addQuad(
+      subject,
+      namedNode(predicate),
+      literal("true", namedNode("http://www.w3.org/2001/XMLSchema#boolean"))
+    );
+  await writeCatalogStore(store);
+}
+
 export async function restoreApp(appId: string): Promise<void> {
   const ttl = await (await solidFetch(CATALOG_URL)).text();
   const store = new Store(new Parser().parse(ttl));

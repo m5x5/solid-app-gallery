@@ -21,12 +21,9 @@ import { useSwipe } from "@/lib/use-swipe";
 import { regionsForImage, useRegions } from "@/lib/regions";
 import { RegionOverlay } from "./RegionOverlay";
 
-// "New"/"Updated" badge derived from the modified date.
+// The Updated badge is explicitly curated by an admin in the app actions.
 function freshness(app: App): string | null {
-  if (!app.modified) return null;
-  const days = (Date.now() - new Date(app.modified).getTime()) / 86400000;
-  if (days < 90) return "Updated";
-  return null;
+  return app.showUpdated ? "Updated" : null;
 }
 
 // Discover card — a mini carousel (Mobbin-style): dots top-right, prev/next

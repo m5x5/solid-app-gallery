@@ -20,6 +20,7 @@ import {
   Link2,
   Ban,
   MessageCircle,
+  Sparkles,
 } from "lucide-react";
 import {
   getApp,
@@ -85,6 +86,7 @@ import {
   setAppLinks,
   addVersionNote,
   setAppExcluded,
+  setAppFlag,
   HIGHLIGHT_TAG,
 } from "@/lib/solid-data";
 import { Input } from "@/components/ui/input";
@@ -518,6 +520,18 @@ export function AppDetail() {
     }
   }
 
+  async function toggleAppFlag(flag: "showUpdated" | "nonFunctional", enabled: boolean) {
+    setBusy(true);
+    try {
+      await setAppFlag(app.id, flag, enabled);
+      await reloadCatalog();
+    } catch (err) {
+      setStatus(`Updating app flags failed: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-8 md:px-8">
       <JsonLd
@@ -613,6 +627,26 @@ export function AppDetail() {
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Badge>{app.category}</Badge>
             {app.status && <Badge>{app.status}</Badge>}
+            {app.showUpdated && <Badge>Updated</Badge>}
+            {app.nonFunctional && <Badge variant="outline">Not functional</Badge>}
+            {isAdmin && !app.excluded && !app.deleted && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!app.showUpdated}
+                disabled={busy}
+                onClick={() => void toggleAppFlag("showUpdated", !app.showUpdated)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                  app.showUpdated
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-border text-muted-foreground hover:bg-secondary"
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Updated badge {app.showUpdated ? "On" : "Off"}
+              </button>
+            )}
             {app.programmingLanguage && (
               <Badge>{app.programmingLanguage}</Badge>
             )}
@@ -698,6 +732,17 @@ export function AppDetail() {
                     <DropdownMenuItem onSelect={openLinks}>
                       <Link2 className="h-4 w-4" /> Edit links
                     </DropdownMenuItem>
+                  )}
+                  {isAdmin && !app.excluded && !app.deleted && (
+                    <>
+                      <DropdownMenuItem
+                        disabled={busy}
+                        onSelect={() => void toggleAppFlag("nonFunctional", !app.nonFunctional)}
+                      >
+                        {app.nonFunctional ? <Check className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                        {app.nonFunctional ? "Mark as functional" : "Mark as not functional"}
+                      </DropdownMenuItem>
+                    </>
                   )}
                   {isAdmin && !app.excluded && !app.deleted && (
                     <DropdownMenuItem

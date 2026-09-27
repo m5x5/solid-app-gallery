@@ -159,6 +159,8 @@ export async function fetchCatalog(): Promise<CatalogData | null> {
       technicalKeyword: lit(id, "technicalKeyword"),
       socialKeyword: lit(id, "socialKeyword"),
       modified: lit(id, "modified"),
+      showUpdated: lit(id, "showUpdated") === "true",
+      nonFunctional: lit(id, "nonFunctional") === "true",
       authors: authorsFor(id),
       domain,
       // Resolved server-side from the site's own manifest / apple-touch-icon /

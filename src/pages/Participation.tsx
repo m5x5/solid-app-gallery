@@ -88,7 +88,7 @@ export function Participation() {
   }
   const sorted = useMemo(
     () => [...needsContribution].sort((a, b) => linkRank(a) - linkRank(b)),
-    []
+    [needsContribution]
   );
 
   return (
@@ -105,9 +105,9 @@ export function Participation() {
           </p>
         )}
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          These apps are in the catalog but don't yet have a usable app
-          screenshot. Open one to add a screenshot (sign in to upload) or fix its
-          link so it can join the gallery.
+          These apps need documentation or a working app screen. Open one to add
+          a screenshot (sign in to upload) or fix its link so it can join the
+          gallery. Apps marked not functional stay here until they work again.
         </p>
 
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -181,6 +181,11 @@ export function Participation() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
+                {a.nonFunctional && (
+                  <span className="w-fit rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                    Not functional
+                  </span>
+                )}
                 {link && (
                   <a
                     href={link}
