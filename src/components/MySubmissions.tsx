@@ -1,17 +1,53 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { MoreHorizontal, Pencil, Trash2, ExternalLink } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { useSolid } from "@/lib/solid-context";
 import { getApp, appBySource } from "@/lib/apps";
-import { listMySubmissions, type MySubmission } from "@/lib/solid-data";
+import { listMySubmissions, withdrawMySubmission, type MySubmission } from "@/lib/solid-data";
 import { usePendingSubmissions } from "@/lib/use-pending-flush";
+import { removePending } from "@/lib/pending-submissions";
 
 // What this visitor has submitted: entries still queued on this device (made
 // while logged out) followed by the ones already written to their pod.
 export function MySubmissions() {
   const { isLoggedIn, webId } = useSolid();
+  const navigate = useNavigate();
   const pending = usePendingSubmissions();
   const [mine, setMine] = useState<MySubmission[]>([]);
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+
+  // Queued on this device only — cancelling just drops it from the queue.
+  function cancelPending(id: string, name: string) {
+    if (!window.confirm(`Cancel the queued submission for "${name}"? It is only stored on this device and will be discarded.`))
+      return;
+    removePending(id);
+  }
+
+  // Already in the submitter's pod: delete the record and tell the admin so it
+  // leaves the review queue too.
+  async function withdraw(m: MySubmission) {
+    if (!webId) return;
+    if (!window.confirm(`Withdraw "${m.sub.name}" from review? The submission is deleted from your pod.`))
+      return;
+    setBusy(m.url);
+    try {
+      await withdrawMySubmission(m.url, webId, m.sub.name);
+      setMine((list) => list.filter((x) => x.url !== m.url));
+      setNote(`Withdrew "${m.sub.name}".`);
+    } catch {
+      setNote(`Couldn't withdraw "${m.sub.name}" — please try again.`);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   useEffect(() => {
     if (!isLoggedIn || !webId) {
@@ -39,15 +75,23 @@ export function MySubmissions() {
   return (
     <div data-testid="my-submissions">
       <h2 className="text-2xl font-bold">Your submissions</h2>
+      {note && (
+        <p role="status" className="mt-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          {note}
+        </p>
+      )}
       {loading && mine.length === 0 && (
         <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
       )}
       <ul className="mt-4 space-y-2">
         {pending.map((p) => (
-          <li key={p.id}>
+          <li
+            key={p.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-card p-3 transition hover:bg-foreground/[0.06]"
+          >
             <Link
               to={`/submit?pendingId=${encodeURIComponent(p.id)}`}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-card p-3 transition hover:border-white/25"
+              className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1"
             >
               <span className="font-medium">{p.sub.name}</span>
               <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
@@ -57,6 +101,30 @@ export function MySubmissions() {
                 {new Date(p.created).toLocaleString()}
               </span>
             </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Actions for ${p.sub.name}`}
+                  className="rounded-full p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={() => navigate(`/submit?pendingId=${encodeURIComponent(p.id)}`)}
+                >
+                  <Pencil className="h-4 w-4" /> Edit submission
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => cancelPending(p.id, p.sub.name)}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" /> Cancel submission
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </li>
         ))}
         {mine.map((m) => {
@@ -64,7 +132,7 @@ export function MySubmissions() {
           return (
             <li
               key={m.url}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-card p-3 transition hover:border-white/25"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-card p-3 transition hover:bg-foreground/[0.06]"
             >
               <Link
                 to={`/submit?url=${encodeURIComponent(m.url)}`}
@@ -86,6 +154,42 @@ export function MySubmissions() {
                   View in gallery
                 </Link>
               )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`Actions for ${m.sub.name}`}
+                    className="rounded-full p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onSelect={() => navigate(`/submit?url=${encodeURIComponent(m.url)}`)}
+                  >
+                    <Pencil className="h-4 w-4" /> Edit submission
+                  </DropdownMenuItem>
+                  {live && (
+                    <DropdownMenuItem
+                      onSelect={() => navigate(`/app/${encodeURIComponent(live.id)}`)}
+                    >
+                      <ExternalLink className="h-4 w-4" /> View in gallery
+                    </DropdownMenuItem>
+                  )}
+                  {/* Published records belong to the catalog now — withdrawing
+                      only applies while the submission is still in review. */}
+                  {!live && (
+                    <DropdownMenuItem
+                      onSelect={() => withdraw(m)}
+                      disabled={busy === m.url}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" /> Withdraw submission
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           );
         })}

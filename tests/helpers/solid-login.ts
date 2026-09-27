@@ -5,6 +5,7 @@ export const POD = {
   idp: process.env.TEST_POD_IDP || "https://pod.mpeters.dev/",
   email: process.env.TEST_POD_EMAIL || "",
   password: process.env.TEST_POD_PASSWORD || "",
+  webId: process.env.TEST_POD_WEBID || "",
 };
 
 /**
@@ -14,7 +15,7 @@ export const POD = {
  */
 export async function completeCssLogin(page: Page) {
   // We should now be on the IdP (the pod host), not localhost.
-  await page.waitForURL(/pod\.mpeters\.dev/, { timeout: 30_000 });
+  await page.waitForURL((url) => url.origin === new URL(POD.idp).origin, { timeout: 30_000 });
 
   // --- Email + password form ---
   const email = page
@@ -53,28 +54,34 @@ export async function authorizeIfPresent(page: Page) {
     .first();
   try {
     await authorize.waitFor({ state: "visible", timeout: 8_000 });
-    await authorize.click();
   } catch {
     // No consent screen (already authorized) — fine.
+    return;
   }
+  const choices = page.getByRole("radio");
+  if (await choices.count()) {
+    const choice = POD.webId
+      ? page.getByRole("radio", { name: POD.webId, exact: true })
+      : choices.first();
+    await choice.check();
+  }
+  await authorize.click();
 }
 
 /** Full login starting from the app's "Log in" dialog on localhost. */
-export async function loginToGallery(page: Page) {
+export async function loginToGallery(page: Page, address = POD.idp) {
+  if (!POD.email || !POD.password) throw new Error("Set TEST_POD_EMAIL and TEST_POD_PASSWORD to run authenticated tests.");
   await page.goto("/");
+  const galleryOrigin = new URL(page.url()).origin;
   await page.getByRole("button", { name: /log in/i }).first().click();
 
-  // Dialog: IdP prefilled with the test pod; click continue.
-  const idpInput = page.locator('input[value*="pod.mpeters.dev"]');
-  await idpInput.waitFor({ state: "visible", timeout: 10_000 });
-
-  await page.getByRole("button", { name: /continue to log in/i }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Identity Provider or WebID").fill(address);
+  await dialog.getByRole("button").filter({ hasText: address }).click();
 
   await completeCssLogin(page);
 
   // Back on the app, logged in: avatar menu trigger replaces "Log in".
-  await page.waitForURL(/localhost:5180/, { timeout: 30_000 });
-  await expect(
-    page.getByRole("button", { name: /log in/i }).first()
-  ).toHaveCount(0, { timeout: 20_000 });
+  await page.waitForURL((url) => url.origin === galleryOrigin, { timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Account", exact: true })).toBeVisible();
 }

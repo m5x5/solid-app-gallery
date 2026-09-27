@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ExternalLink,
@@ -19,6 +19,7 @@ import {
   Loader2,
   Link2,
   Ban,
+  MessageCircle,
 } from "lucide-react";
 import {
   getApp,
@@ -27,6 +28,7 @@ import {
   screenVideos,
   frameTags,
   reloadCatalog,
+  MAX_CARD_FRAMES,
 } from "@/lib/apps";
 import { SuggestRemoval } from "@/components/SuggestRemoval";
 import { useHead, JsonLd, appJsonLd, appUrl, breadcrumbJsonLd } from "@/lib/seo";
@@ -35,11 +37,17 @@ import { UploadingCard } from "@/components/UploadingCard";
 import { appTransitionName, armScreenTransition, returnScreenTransitionName } from "@/lib/transitions";
 import { PhoneFrame } from "@/components/PhoneFrame";
 import { DesktopFrame } from "@/components/DesktopFrame";
+import { ShapeFrame } from "@/components/ShapeFrame";
+import { RegionOverlay } from "@/components/RegionOverlay";
+import { PublishedShapes } from "@/components/PublishedShapes";
+import { regionsForImage, useRegions } from "@/lib/regions";
+import { deriveAppShape } from "@/lib/shapes";
 import { AppIcon } from "@/components/AppIcon";
 import { BookmarkButton } from "@/components/BookmarkButton";
 import { useFormFactors, type FormFactor } from "@/lib/use-form-factor";
 import { usePasteImages } from "@/lib/use-paste-images";
 import { cn } from "@/lib/utils";
+import { setFlash, takeFlash } from "@/lib/flash";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -56,6 +64,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSolid } from "@/lib/solid-context";
 import {
+  loadPublicCommentCounts,
+  commentKey,
   uploadScreenshot,
   listScreenshots,
   fetchImageObjectUrl,
@@ -75,10 +85,14 @@ import {
   setAppLinks,
   addVersionNote,
   setAppExcluded,
+  HIGHLIGHT_TAG,
 } from "@/lib/solid-data";
 import { Input } from "@/components/ui/input";
 
 const SCREEN_PATTERNS = ["Login", "Onboarding", "Dashboard", "Profile", "Signup"];
+// Assignable alongside the flows: "Highlight" marks the screens a discover card
+// shows (at most four, see cardFrames in lib/apps).
+const ASSIGNABLE_TAGS = [...SCREEN_PATTERNS, HIGHLIGHT_TAG];
 
 type Preview = { src: string; kind: "catalog" | "upload"; source: string };
 
@@ -90,7 +104,8 @@ export function AppDetail() {
   const [shotUrls, setShotUrls] = useState<string[]>([]); // pod source URLs
   const [uploadTagsMap, setUploadTagsMap] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("");
+  // Picks up the confirmation of an action that remounted this page.
+  const [status, setStatus] = useState(takeFlash);
   // A screenshot can show more than one flow (e.g. a combined login/signup
   // screen), so tag selection is multi-select rather than a single pattern.
   const [items, setItems] = useState<Preview[]>([]);
@@ -111,6 +126,9 @@ export function AppDetail() {
   // here because a menu item unmounts when the menu closes.
   const [removalOpen, setRemovalOpen] = useState(false);
   const [rdfOpen, setRdfOpen] = useState(false);
+  const { regions } = useRegions(app?.id);
+  const shape = useMemo(() => deriveAppShape(app ?? { id: "", name: "" }, regions), [app, regions]);
+  const annotatedScreens = useMemo(() => new Set(regions.map((r) => r.image || r.screenId)).size, [regions]);
   // Admin: attach an author by WebID (for records created without one).
   const [authorOpen, setAuthorOpen] = useState(false);
   const [authorWebId, setAuthorWebId] = useState("");
@@ -196,6 +214,16 @@ export function AppDetail() {
     setShotUrls(ok.map((o) => o.u));
     setUploadTagsMap(tagMap);
   }
+
+  // Public comment counts per screen, for the badge on each screenshot.
+  const [commentCounts, setCommentCounts] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    let alive = true;
+    loadPublicCommentCounts().then((m) => alive && setCommentCounts(m));
+    return () => {
+      alive = false;
+    };
+  }, [app?.id]);
 
   useEffect(() => {
     if (!app || !isLoggedIn || !webId) return;
@@ -314,12 +342,16 @@ export function AppDetail() {
         shotUrls.map((url) => ({ url, tags: [], by: webId || undefined }))
       );
       // The catalog now owns a copy of these images — remove the uploader's
-      // originals so the same screenshot doesn't show up twice after reload.
+      // originals so the same screenshot doesn't show up twice.
       await Promise.all(shotUrls.map((url) => deleteUpload(url).catch(() => {})));
-      setStatus(`Published ${n} screenshot${n === 1 ? "" : "s"} ✓ Reloading…`);
-      setTimeout(() => window.location.reload(), 1200);
+      // Refresh in place instead of reloading the page: the catalog for the
+      // new frames, the pod listing for the originals we just deleted.
+      setFlash(`Published ${n} screenshot${n === 1 ? "" : "s"} ✓`);
+      await reloadCatalog();
+      if (webId) await loadShots(app.id, webId);
     } catch (err) {
       setStatus(`Publish failed: ${(err as Error).message}`);
+    } finally {
       setBusy(false);
     }
   }
@@ -403,8 +435,9 @@ export function AppDetail() {
         setBusy(false);
       } else {
         await removeScreenshotFromCatalog(app.id, p.source);
-        setStatus("Removed ✓ Reloading…");
-        setTimeout(() => window.location.reload(), 1000);
+        setFlash("Removed ✓");
+        await reloadCatalog();
+        setBusy(false);
       }
     } catch (err) {
       setStatus(`Remove failed: ${(err as Error).message}`);
@@ -417,6 +450,12 @@ export function AppDetail() {
       ? uploadTagsMap[p.source] || []
       : catalogTagOverrides[p.source] ?? frameTags(app!.id, p.source);
   }
+
+  // How many screenshots currently carry the highlight marker (optimistic, so
+  // the counter moves with the click rather than after the write).
+  const highlightCount = previews.filter((p) =>
+    currentTags(p).includes(HIGHLIGHT_TAG)
+  ).length;
 
   // Add/remove a single flow for one screenshot, optimistically, without
   // disturbing its other flow tags.
@@ -469,8 +508,8 @@ export function AppDetail() {
       } else {
         await retagCatalogScreenshot(app.id, editing.source, editSel);
         setEditing(null);
-        setStatus("Flows updated ✓ Reloading…");
-        setTimeout(() => window.location.reload(), 1000);
+        setFlash("Flows updated ✓");
+        await reloadCatalog();
       }
     } catch (err) {
       setStatus(`Updating flows failed: ${(err as Error).message}`);
@@ -591,7 +630,7 @@ export function AppDetail() {
                   key={au.id}
                   to={`/author/${encodeURIComponent(au.id)}`}
                   viewTransition
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 font-medium text-foreground transition hover:border-white/30 hover:bg-secondary"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 font-medium text-foreground transition hover:border-foreground/30 hover:bg-secondary"
                 >
                   <AuthorAvatar author={au} className="h-5 w-5 text-[9px]" transitionId={au.id} />
                   <span style={{ viewTransitionName: authorTransitionName(au.id, "name") }}>
@@ -811,13 +850,32 @@ export function AppDetail() {
                   playsInline
                   muted
                   loop
-                  className="aspect-[9/19.5] w-full max-w-[260px] overflow-hidden rounded-[1.6rem] bg-zinc-900 ring-1 ring-white/10"
+                  className="aspect-[9/19.5] w-full max-w-[260px] overflow-hidden rounded-[1.6rem] bg-zinc-900 ring-1 ring-border"
                   src={v.path}
                 />
                 <div className="mt-2 text-sm text-muted-foreground">{v.label}</div>
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {app.landingPage && <PublishedShapes app={app} className="mt-10" />}
+
+      {regions.length > 0 && (
+        <div className="mt-10">
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold">Data seen on screens</h2>
+            <span className="text-sm text-muted-foreground">
+              from {regions.length} region{regions.length === 1 ? "" : "s"} on {annotatedScreens} screen
+              {annotatedScreens === 1 ? "" : "s"}
+            </span>
+          </div>
+          <p className="mb-4 text-sm text-muted-foreground">
+            What the community marked on the screenshots — which terms and shapes show up where.
+            Open a screen and use <em>Mark data</em> to add to it.
+          </p>
+          <ShapeFrame shape={shape} copyable />
         </div>
       )}
 
@@ -880,7 +938,7 @@ export function AppDetail() {
       {flowEditing && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
           <span className="text-sm text-muted-foreground">Editing:</span>
-          {SCREEN_PATTERNS.map((p) => (
+          {ASSIGNABLE_TAGS.map((p) => (
             <button
               key={p}
               type="button"
@@ -897,7 +955,23 @@ export function AppDetail() {
             </button>
           ))}
           <span className="text-xs text-muted-foreground sm:ml-auto">
-            Click a screenshot to add or remove it from "{editingFlow}".
+            {editingFlow === HIGHLIGHT_TAG ? (
+              <>
+                Click a screenshot to feature it on the gallery card
+                {" — "}
+                <span
+                  className={cn(
+                    highlightCount > MAX_CARD_FRAMES && "font-semibold text-destructive"
+                  )}
+                >
+                  {highlightCount} of {MAX_CARD_FRAMES} picked
+                  {highlightCount > MAX_CARD_FRAMES && " (only the first four are shown)"}
+                </span>
+                .
+              </>
+            ) : (
+              <>Click a screenshot to add or remove it from "{editingFlow}".</>
+            )}
           </span>
         </div>
       )}
@@ -946,11 +1020,14 @@ export function AppDetail() {
           // frames are managed only by the admin (un-publish / reorder).
           const manage = canManage(p);
           const selected = flowEditing && currentTags(p).includes(editingFlow);
+          const rs = regionsForImage(regions, p.src);
+          const overlay = rs.length ? <RegionOverlay regions={rs} compact /> : undefined;
+          const commentCount = commentCounts.get(commentKey(`${app.id}::${i}`)) ?? 0;
           const frame =
             view === "desktop" ? (
-              <DesktopFrame app={app} image={p.src} />
+              <DesktopFrame app={app} image={p.src} overlay={overlay} />
             ) : (
-              <PhoneFrame app={app} image={p.src} />
+              <PhoneFrame app={app} image={p.src} overlay={overlay} />
             );
           return (
             <div
@@ -990,6 +1067,18 @@ export function AppDetail() {
                     {frame}
                   </span>
                 </Link>
+              )}
+              {commentCount > 0 && (
+                <span
+                  title={`${commentCount} comment${commentCount === 1 ? "" : "s"}`}
+                  className={cn(
+                    "pointer-events-none absolute right-2 top-2 z-10 inline-flex h-6 items-center gap-1 rounded-full border border-white/30 bg-black/60 px-2 text-xs font-semibold text-white backdrop-blur",
+                    manage && !flowEditing && "group-hover:opacity-0"
+                  )}
+                >
+                  <MessageCircle className="h-3 w-3" />
+                  {commentCount > 99 ? "99+" : commentCount}
+                </span>
               )}
               {replacing?.p.source === p.source && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-[1.6rem] bg-black/60 text-white backdrop-blur-sm">
@@ -1066,7 +1155,7 @@ export function AppDetail() {
           <button
             onClick={() => fileRef.current?.click()}
             className={cn(
-              "flex flex-col items-center justify-center gap-2 border border-dashed border-border text-muted-foreground hover:border-white/30 hover:text-foreground",
+              "flex flex-col items-center justify-center gap-2 border border-dashed border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
               view === "desktop" ? "aspect-[16/10] rounded-xl" : "aspect-[9/19.5] rounded-[1.6rem]"
             )}
           >
@@ -1082,7 +1171,7 @@ export function AppDetail() {
             <DialogTitle>Edit flows</DialogTitle>
           </DialogHeader>
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Flow tags">
-            {SCREEN_PATTERNS.map((p) => {
+            {ASSIGNABLE_TAGS.map((p) => {
               const active = editSel.includes(p);
               return (
                 <button

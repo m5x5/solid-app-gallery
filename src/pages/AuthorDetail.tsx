@@ -22,8 +22,32 @@ import { Button } from "@/components/ui/button";
 // One entry in the activity timeline.
 type Activity =
   | { kind: "submitted"; at: string; app: App }
-  | { kind: "screenshot"; at: string; app: App; path: string; index: number }
+  // One entry per upload session: screenshots added to the same app within
+  // half a day read as one contribution, not as N identical lines.
+  | { kind: "screenshot"; at: string; app: App; shots: { path: string; index: number }[] }
   | { kind: "comment"; at: string; comment: Comment; app?: App; screenIndex: number };
+
+const SCREENSHOT_GROUP_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+// Collapse screenshot entries for the same app that all fall within 12h of the
+// newest one in the run. Input must be sorted newest first.
+function groupScreenshots(items: Activity[]): Activity[] {
+  const out: Activity[] = [];
+  for (const item of items) {
+    const open = out[out.length - 1];
+    if (
+      item.kind === "screenshot" &&
+      open?.kind === "screenshot" &&
+      open.app.id === item.app.id &&
+      Math.abs(Date.parse(open.at) - Date.parse(item.at)) <= SCREENSHOT_GROUP_WINDOW_MS
+    ) {
+      open.shots.push(...item.shots);
+      continue;
+    }
+    out.push(item.kind === "screenshot" ? { ...item, shots: [...item.shots] } : item);
+  }
+  return out;
+}
 
 function when(iso: string): string {
   const d = new Date(iso);
@@ -77,7 +101,12 @@ export function AuthorDetail() {
       if (app.dateSubmitted) items.push({ kind: "submitted", at: app.dateSubmitted, app });
     for (const s of screenshots)
       if (s.frame.created)
-        items.push({ kind: "screenshot", at: s.frame.created, app: s.app, path: s.frame.path, index: s.index });
+        items.push({
+          kind: "screenshot",
+          at: s.frame.created,
+          app: s.app,
+          shots: [{ path: s.frame.path, index: s.index }],
+        });
     for (const c of comments) {
       // screenId is `${app.id}::${frameIndex}` (see ScreenDetail).
       const sep = c.screenId.lastIndexOf("::");
@@ -86,7 +115,7 @@ export function AuthorDetail() {
       const app = getApp(appId);
       items.push({ kind: "comment", at: c.created, comment: c, app, screenIndex });
     }
-    return items.sort((a, b) => b.at.localeCompare(a.at));
+    return groupScreenshots(items.sort((a, b) => b.at.localeCompare(a.at)));
   }, [submitted, screenshots, comments, apps]);
 
   // Where an activity card leads: the app for submissions, the exact screen for
@@ -94,7 +123,7 @@ export function AuthorDetail() {
   const hrefFor = (a: Activity): string | undefined => {
     if (a.kind === "submitted") return `/app/${encodeURIComponent(a.app.id)}`;
     if (a.kind === "screenshot")
-      return `/screen/${encodeURIComponent(a.app.id)}?i=${a.index}`;
+      return `/screen/${encodeURIComponent(a.app.id)}?i=${a.shots[0].index}`;
     if (a.app)
       return `/screen/${encodeURIComponent(a.app.id)}?i=${a.screenIndex}&c=${encodeURIComponent(a.comment.id)}`;
     return undefined;
@@ -105,6 +134,7 @@ export function AuthorDetail() {
   const name = author?.name || profileName || authorId;
   const isOrg = author?.type === "Organization";
   const isCatalogAuthor = apps.length > 0;
+  const profileUrl = authorUrl({ id: authorId });
 
   const stats = [
     isCatalogAuthor && `${apps.length} ${apps.length === 1 ? "app" : "apps"}`,
@@ -143,14 +173,21 @@ export function AuthorDetail() {
           ]),
         ]}
       />
-      <div className="flex flex-wrap items-center gap-4">
+      <div
+        about={profileUrl}
+        typeof={isOrg ? "schema:Organization" : "schema:Person"}
+        prefix="schema: http://schema.org/"
+        className="flex flex-wrap items-center gap-4"
+      >
         <AuthorAvatar
           author={{ name, webId }}
           className="h-16 w-16 text-xl"
           transitionId={authorId}
+          imageProperty="schema:image"
         />
         <div className="min-w-0">
           <h1
+            property="schema:name"
             className="text-2xl font-bold"
             style={{ viewTransitionName: authorTransitionName(authorId, "name") }}
           >
@@ -166,7 +203,7 @@ export function AuthorDetail() {
         </div>
         {webId && (
           <Button asChild variant="outline" className="ml-auto">
-            <a href={webId} target="_blank" rel="noopener">
+            <a href={webId} target="_blank" rel="noopener schema:sameAs">
               <ExternalLink className="h-4 w-4" />
               {/^https?:\/\/[^/]+\/profile\/card/.test(webId) ? "View Solid profile" : "View profile"}
             </a>
@@ -218,7 +255,7 @@ export function AuthorDetail() {
             {activity.map((a, i) => (
               <li
                 key={i}
-                className="relative flex items-start gap-3 rounded-xl border border-border bg-card p-3 transition hover:border-white/25"
+                className="relative flex items-start gap-3 rounded-xl border border-border bg-card p-3 transition hover:bg-foreground/[0.06]"
               >
                 {/* Whole card is the link (stretched overlay); the app chip is a
                     separate link layered above it. */}
@@ -252,7 +289,10 @@ export function AuthorDetail() {
                   )}
                   {a.kind === "screenshot" && (
                     <>
-                      Added a screenshot to <AppLink app={a.app} />
+                      {a.shots.length === 1
+                        ? "Added a screenshot to "
+                        : `Added ${a.shots.length} screenshots to `}
+                      <AppLink app={a.app} />
                     </>
                   )}
                   {a.kind === "comment" && (
@@ -283,12 +323,22 @@ export function AuthorDetail() {
                   </div>
                 </div>
                 {a.kind === "screenshot" && (
-                  <img
-                    src={a.path}
-                    alt=""
-                    className="h-16 w-auto max-w-[96px] shrink-0 rounded-md object-cover ring-1 ring-white/10"
-                    loading="lazy"
-                  />
+                  <span className="flex shrink-0 items-center gap-1">
+                    {a.shots.slice(0, 3).map((shot) => (
+                      <img
+                        key={shot.path}
+                        src={shot.path}
+                        alt=""
+                        className="h-16 w-auto max-w-[64px] shrink-0 rounded-md object-cover ring-1 ring-border"
+                        loading="lazy"
+                      />
+                    ))}
+                    {a.shots.length > 3 && (
+                      <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                        +{a.shots.length - 3}
+                      </span>
+                    )}
+                  </span>
                 )}
               </li>
             ))}
@@ -321,7 +371,7 @@ function CompactApp({ app }: { app: App }) {
       to={`/app/${encodeURIComponent(app.id)}`}
       viewTransition
       onClick={(e) => armAppTransition(e.currentTarget, app.id)}
-      className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition hover:border-white/25"
+      className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition hover:bg-foreground/[0.06]"
     >
       <span data-vt="icon" className="flex shrink-0">
         <AppIcon app={app} size={36} rounded="rounded-lg" />

@@ -1,6 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, X, Inbox, FilePlus, Flag, Trash2, ShieldCheck } from "lucide-react";
+import {
+  Check,
+  X,
+  Inbox,
+  FilePlus,
+  Flag,
+  Trash2,
+  ShieldCheck,
+  Archive,
+  ChevronDown,
+  Undo2,
+} from "lucide-react";
 import { useSolid } from "@/lib/solid-context";
 import { getApp, appBySource, reloadCatalog } from "@/lib/apps";
 import {
@@ -8,6 +19,10 @@ import {
   loadUploadTags,
   publishScreenshotsToCatalog,
   dismissNotice,
+  archiveNotice,
+  loadDismissedNotices,
+  restoreNotice,
+  type DismissedNotice,
   fetchImageObjectUrl,
   loadAdmins,
   addAdmin,
@@ -17,15 +32,66 @@ import {
   loadDeletionInbox,
   markAppDeleted,
   loadModeratorInbox,
+  ensureInboxAdminAccess,
+  InboxAccessError,
   type ModeratorRequest,
   type UploadNotice,
   type SubmissionNotice,
   type DeletionNotice,
 } from "@/lib/solid-data";
 import { AdminManager } from "@/components/AdminManager";
+import { notifyPeople, type ActivityKind } from "@/lib/activity";
 import { Button } from "@/components/ui/button";
 
 const SCREEN_PATTERNS = ["Login", "Onboarding", "Dashboard", "Profile", "Signup"];
+
+// Every field of a submission as the notification carried it, so a reviewer
+// sees exactly what would be published.
+function SubmissionDetails({ notice: n }: { notice: SubmissionNotice }) {
+  const link = (href?: string) =>
+    href ? (
+      <a href={href} target="_blank" rel="noreferrer" className="break-all underline">
+        {href}
+      </a>
+    ) : undefined;
+  const rows: [string, React.ReactNode][] = [
+    ["Description", n.sub.description && <span className="whitespace-pre-wrap">{n.sub.description}</span>],
+    ["Category", n.sub.subType],
+    ["Status", n.sub.status],
+    ["Technical keywords", n.sub.technicalKeyword],
+    ["Website", link(n.sub.landingPage)],
+    ["Repository", link(n.sub.repository)],
+    [
+      "Author",
+      n.sub.authorWebId && (
+        <Link to={`/author/${encodeURIComponent(n.sub.authorWebId)}`} className="break-all underline">
+          {n.sub.authorWebId}
+        </Link>
+      ),
+    ],
+    [
+      "Submitted by",
+      n.actor && (
+        <Link to={`/author/${encodeURIComponent(n.actor)}`} className="break-all underline">
+          {n.actor}
+        </Link>
+      ),
+    ],
+    ["Submitted", n.published && new Date(n.published).toLocaleString()],
+    ["Record", link(n.submissionUrl)],
+    ["ID", n.sub.id && <span className="break-all">{n.sub.id}</span>],
+  ];
+  return (
+    <dl className="grid basis-full grid-cols-1 gap-x-4 gap-y-2 border-t border-border pt-4 text-sm sm:grid-cols-[10rem_1fr]">
+      {rows.map(([label, value]) => (
+        <div key={label} className="contents">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="min-w-0">{value || <span className="text-muted-foreground">—</span>}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 function actorLabel(webId: string): string {
   try {
@@ -36,15 +102,77 @@ function actorLabel(webId: string): string {
   }
 }
 
+// One person dropping a batch of screenshots on the same app is one piece of
+// work for the reviewer, not N — group uploads by uploader + app when they
+// arrived within half a day of each other.
+const UPLOAD_GROUP_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+type UploadGroup = {
+  key: string;
+  actor: string;
+  appId: string;
+  items: UploadNotice[];
+};
+
+function groupUploads(list: UploadNotice[]): UploadGroup[] {
+  const time = (n: UploadNotice) => Date.parse(n.published || "") || 0;
+  const groups: UploadGroup[] = [];
+  for (const n of [...list].sort((a, b) => (b.published || "").localeCompare(a.published || ""))) {
+    // Within 12h of the group's newest upload — not a chain of 12h hops, which
+    // could stretch a "group" across days.
+    const near = groups.find(
+      (g) =>
+        g.actor === n.actor &&
+        g.appId === n.appId &&
+        Math.abs(time(g.items[0]) - time(n)) <= UPLOAD_GROUP_WINDOW_MS
+    );
+    if (near) near.items.push(n);
+    else groups.push({ key: n.id, actor: n.actor, appId: n.appId, items: [n] });
+  }
+  return groups;
+}
+
+// "12 Aug, 14:03" / "12 Aug, 14:03 – 19:41" for a batch.
+function groupWhen(items: UploadNotice[]): string {
+  const stamps = items.map((i) => i.published).filter(Boolean).sort() as string[];
+  if (!stamps.length) return "";
+  const first = new Date(stamps[0]);
+  const last = new Date(stamps[stamps.length - 1]);
+  const date = first.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const t = (d: Date) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return stamps.length > 1 && t(first) !== t(last)
+    ? `${date}, ${t(first)} – ${t(last)}`
+    : `${date}, ${t(first)}`;
+}
+
 export function Review() {
-  const { webId, isAdmin: admin, isOwner } = useSolid();
+  const { webId, name: myName, isAdmin: admin, isOwner } = useSolid();
+  // Let the person behind a notice know what a moderator did with it. Fired
+  // after the action succeeded, never awaited: the inbox is best-effort.
+  function tell(
+    to: string[],
+    kind: ActivityKind,
+    fields: { summary: string; content?: string; path?: string }
+  ) {
+    if (!webId) return;
+    notifyPeople(to, { webId, name: myName || actorLabel(webId) }, kind, fields).catch(() => {});
+  }
   const [notices, setNotices] = useState<UploadNotice[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [patterns, setPatterns] = useState<Record<string, string[]>>({});
   const [submissions, setSubmissions] = useState<SubmissionNotice[]>([]);
   const [deletions, setDeletions] = useState<DeletionNotice[]>([]);
   const [modRequests, setModRequests] = useState<ModeratorRequest[]>([]);
+  // Everything an admin waved away, so a dismissal is reviewable and reversible.
+  const [dismissed, setDismissed] = useState<DismissedNotice[]>([]);
+  const [showDismissed, setShowDismissed] = useState(false);
+  // Submissions whose full details are unfolded, so a reviewer can read the
+  // whole thing before publishing.
+  const [openSubs, setOpenSubs] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  // Why the inbox couldn't be read, if it couldn't — shown instead of the
+  // "nothing pending" states, which would otherwise hide a missing permission.
+  const [inboxError, setInboxError] = useState("");
   const [busy, setBusy] = useState<string>("");
   // Outcome of the last publish/dismiss, so a row vanishing from the queue is
   // never the only signal of what happened.
@@ -53,7 +181,15 @@ export function Review() {
   useEffect(() => {
     if (!admin) return;
     setLoading(true);
-    Promise.all([
+    setInboxError("");
+    const inboxFailed = (err: unknown) =>
+      setInboxError(
+        err instanceof InboxAccessError
+          ? "You're not allowed to read the admin inbox, so submissions, uploads and deletion requests can't be shown. Ask the catalog owner to open this page once — that grants moderators access."
+          : `Couldn't load the admin inbox: ${(err as Error).message}`
+      );
+    // The owner grants the moderators group inbox access before reading it.
+    (isOwner ? ensureInboxAdminAccess() : Promise.resolve()).then(() => Promise.all([
       loadUploadInbox().then(async (rawList) => {
         // The notification only captures tags as of upload time; the uploader
         // may have since edited them (setUploadTags), so pull the current
@@ -87,8 +223,34 @@ export function Review() {
       loadSubmissionInbox().then(setSubmissions),
       loadDeletionInbox().then(setDeletions),
       isOwner ? loadModeratorInbox().then(setModRequests) : Promise.resolve(),
-    ]).finally(() => setLoading(false));
+    ]).catch(inboxFailed))
+      .finally(() => setLoading(false));
+    loadDismissedNotices().then(setDismissed);
   }, [admin, isOwner]);
+
+  // Put a dismissed notice back in the queue and refresh the lists it belongs
+  // to, so it reappears above without a page reload.
+  async function restore(d: DismissedNotice) {
+    setBusy(d.id);
+    setResult(null);
+    try {
+      await restoreNotice(d.id);
+      setDismissed((prev) => prev.filter((x) => x.id !== d.id));
+      const [uploads, subs, dels] = await Promise.all([
+        loadUploadInbox(),
+        loadSubmissionInbox(),
+        loadDeletionInbox(),
+      ]);
+      setNotices(uploads);
+      setSubmissions(subs);
+      setDeletions(dels);
+      setResult({ text: "Restored to the review queue ✓" });
+    } catch (err) {
+      setResult({ text: `Restore failed: ${(err as Error).message}` });
+    } finally {
+      setBusy("");
+    }
+  }
 
   function toggleTag(noticeId: string, tag: string) {
     setPatterns((prev) => {
@@ -103,27 +265,43 @@ export function Review() {
   // The submission an upload belongs to, when the app isn't in the catalog yet
   // (screenshots uploaded from the "Edit your submission" page are keyed by
   // the submission's future catalog id).
+  const uploadGroups = useMemo(() => groupUploads(notices), [notices]);
+
   const submissionFor = (appId: string) =>
     submissions.find((s) => s.sub.id === appId);
 
-  async function publish(n: UploadNotice) {
-    setBusy(n.id);
+  // Publishes a whole batch in one catalog write (publishScreenshotsToCatalog
+  // takes the list), instead of one read-modify-write cycle per screenshot.
+  async function publishGroup(g: UploadGroup) {
+    setBusy(g.key);
     setResult(null);
+    const n = g.items.length;
     try {
-      const tags = patterns[n.id]?.length ? patterns[n.id] : ["Dashboard"];
-      await publishScreenshotsToCatalog(n.appId, [
-        { url: n.imageUrl, tags, by: n.actor, at: n.published },
-      ]);
-      await dismissNotice(n.id).catch(() => {});
-      setNotices((prev) => prev.filter((x) => x.id !== n.id));
+      await publishScreenshotsToCatalog(
+        g.appId,
+        g.items.map((it) => ({
+          url: it.imageUrl,
+          tags: patterns[it.id]?.length ? patterns[it.id] : ["Dashboard"],
+          by: it.actor,
+          at: it.published,
+        }))
+      );
+      await Promise.all(g.items.map((it) => dismissNotice(it.id).catch(() => {})));
+      const done = new Set(g.items.map((it) => it.id));
+      setNotices((prev) => prev.filter((x) => !done.has(x.id)));
       await reloadCatalog();
-      const app = getApp(n.appId);
+      const app = getApp(g.appId);
+      const what = `${n} screenshot${n === 1 ? "" : "s"}`;
+      tell(g.items.map((it) => it.actor), "published", {
+        summary: `published your screenshots of ${app?.name || submissionFor(g.appId)?.sub.name || "an app"}`,
+        path: app ? `/app/${encodeURIComponent(g.appId)}` : undefined,
+      });
       setResult(
         app
-          ? { text: `Screenshot published to ${app.name} ✓`, appId: n.appId }
+          ? { text: `Published ${what} to ${app.name} ✓`, appId: g.appId }
           : {
-              text: `Screenshot published ✓ — it appears once "${
-                submissionFor(n.appId)?.sub.name || "its app submission"
+              text: `Published ${what} ✓ — they appear once "${
+                submissionFor(g.appId)?.sub.name || "the app submission"
               }" is published too.`,
             }
       );
@@ -134,19 +312,25 @@ export function Review() {
     }
   }
 
-  async function dismiss(n: UploadNotice) {
-    setBusy(n.id);
+  async function dismissGroup(g: UploadGroup) {
+    setBusy(g.key);
     setResult(null);
+    const n = g.items.length;
     try {
-      await dismissNotice(n.id);
-      setNotices((prev) => prev.filter((x) => x.id !== n.id));
-      setResult({ text: "Upload dismissed." });
+      await Promise.all(g.items.map((it) => archiveNotice(it.id, webId || undefined)));
+      const done = new Set(g.items.map((it) => it.id));
+      setNotices((prev) => prev.filter((x) => !done.has(x.id)));
+      tell(g.items.map((it) => it.actor), "dismissed", {
+        summary: `dismissed your screenshot upload for ${getApp(g.appId)?.name || submissionFor(g.appId)?.sub.name || "an app"}`,
+      });
+      setResult({ text: `Dismissed ${n} upload${n === 1 ? "" : "s"}.` });
     } catch (err) {
       setResult({ text: `Dismiss failed: ${(err as Error).message}` });
     } finally {
       setBusy("");
     }
   }
+
 
   async function publishSubmission(n: SubmissionNotice) {
     setBusy(n.id);
@@ -161,6 +345,12 @@ export function Review() {
       await reloadCatalog();
       const app = getApp(id);
       const hasScreens = notices.some((u) => u.appId === id);
+      tell([n.actor], "published", {
+        summary: n.isUpdate
+          ? `published your update to ${n.sub.name}`
+          : `published your app submission ${n.sub.name}`,
+        path: app ? `/app/${encodeURIComponent(id)}` : undefined,
+      });
       setResult({
         text: n.isUpdate
           ? `${n.sub.name} updated in the catalog ✓`
@@ -189,6 +379,10 @@ export function Review() {
       const same = deletions.filter((d) => d.appId === n.appId && d.id !== n.id);
       await Promise.all(same.map((d) => dismissNotice(d.id).catch(() => {})));
       setDeletions((prev) => prev.filter((d) => d.appId !== n.appId));
+      tell([n, ...same].map((d) => d.actor), "deleted", {
+        summary: `removed ${app?.name || "an app"} from the gallery, as you requested`,
+        content: n.reason,
+      });
       await reloadCatalog();
       setResult({ text: `${app?.name || "App"} marked as deleted ✓`, appId: n.appId });
     } catch (err) {
@@ -206,6 +400,7 @@ export function Review() {
       await addAdmin(r.actor);
       await dismissNotice(r.id).catch(() => {});
       setModRequests((prev) => prev.filter((x) => x.id !== r.id));
+      tell([r.actor], "moderator", { summary: "made you a moderator", path: "/review" });
       setResult({ text: `${actorLabel(r.actor)} is now a moderator ✓` });
     } catch (err) {
       setResult({ text: `Adding moderator failed: ${(err as Error).message}` });
@@ -217,8 +412,9 @@ export function Review() {
     setBusy(r.id);
     setResult(null);
     try {
-      await dismissNotice(r.id);
+      await archiveNotice(r.id, webId || undefined);
       setModRequests((prev) => prev.filter((x) => x.id !== r.id));
+      tell([r.actor], "dismissed", { summary: "declined your moderator request" });
       setResult({ text: "Moderator request dismissed." });
     } catch (err) {
       setResult({ text: `Dismiss failed: ${(err as Error).message}` });
@@ -231,8 +427,11 @@ export function Review() {
     setBusy(n.id);
     setResult(null);
     try {
-      await dismissNotice(n.id);
+      await archiveNotice(n.id, webId || undefined);
       setDeletions((prev) => prev.filter((x) => x.id !== n.id));
+      tell([n.actor], "dismissed", {
+        summary: `kept ${getApp(n.appId)?.name || "an app"} after your removal request`,
+      });
       setResult({ text: "Deletion request dismissed." });
     } catch (err) {
       setResult({ text: `Dismiss failed: ${(err as Error).message}` });
@@ -245,8 +444,9 @@ export function Review() {
     setBusy(n.id);
     setResult(null);
     try {
-      await dismissNotice(n.id);
+      await archiveNotice(n.id, webId || undefined);
       setSubmissions((prev) => prev.filter((x) => x.id !== n.id));
+      tell([n.actor], "dismissed", { summary: `dismissed your app submission ${n.sub.name}` });
       setResult({ text: "Submission dismissed." });
     } catch (err) {
       setResult({ text: `Dismiss failed: ${(err as Error).message}` });
@@ -272,6 +472,15 @@ export function Review() {
       </p>
 
       {isOwner && <AdminManager currentWebId={webId} />}
+
+      {inboxError && (
+        <div
+          role="alert"
+          className="mt-6 rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          {inboxError}
+        </div>
+      )}
 
       {result && (
         <div
@@ -300,7 +509,7 @@ export function Review() {
         People asking for moderator access (from the Participation page). Approving adds their
         WebID to the moderators group — only you, as the catalog owner, can do this.
       </p>
-      {!loading && modRequests.length === 0 && (
+      {!loading && !inboxError && modRequests.length === 0 && (
         <p className="py-6 text-center text-muted-foreground">No pending requests.</p>
       )}
       {modRequests.length > 0 && (
@@ -348,7 +557,7 @@ export function Review() {
         Apps submitted via the "Submit an app" form. Publish to add them to the
         catalog, or dismiss.
       </p>
-      {!loading && submissions.length === 0 && (
+      {!loading && !inboxError && submissions.length === 0 && (
         <p className="py-10 text-center text-muted-foreground">
           No pending submissions.
         </p>
@@ -383,10 +592,32 @@ export function Review() {
                 )}
                 <div className="text-sm text-muted-foreground">
                   from {actorLabel(n.actor)}
-                  {n.published
-                    ? ` · ${new Date(n.published).toLocaleDateString()}`
-                    : ""}
+                  {n.published && (
+                    <>
+                      {" · "}
+                      <time dateTime={n.published}>
+                        {new Date(n.published).toLocaleString()}
+                      </time>
+                    </>
+                  )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenSubs((prev) => {
+                      const next = new Set(prev);
+                      if (!next.delete(n.id)) next.add(n.id);
+                      return next;
+                    })
+                  }
+                  className="mt-1 flex items-center gap-1 text-sm text-muted-foreground transition hover:text-foreground"
+                  aria-expanded={openSubs.has(n.id)}
+                >
+                  {openSubs.has(n.id) ? "Hide details" : "Show details"}
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${openSubs.has(n.id) ? "rotate-180" : ""}`}
+                  />
+                </button>
               </div>
               <Button
                 onClick={() => publishSubmission(n)}
@@ -403,6 +634,7 @@ export function Review() {
               >
                 <X className="h-4 w-4" /> Dismiss
               </Button>
+              {openSubs.has(n.id) && <SubmissionDetails notice={n} />}
             </li>
           ))}
         </ul>
@@ -416,7 +648,7 @@ export function Review() {
         Apps users flagged for removal, with their reason. Marking one as deleted
         hides it from every listing (its page stays reachable and can be restored).
       </p>
-      {!loading && deletions.length === 0 && (
+      {!loading && !inboxError && deletions.length === 0 && (
         <p className="py-10 text-center text-muted-foreground">No deletion requests.</p>
       )}
       {deletions.length > 0 && (
@@ -485,100 +717,170 @@ export function Review() {
 
       {loading ? (
         <p className="py-20 text-center text-muted-foreground">Loading inbox…</p>
-      ) : notices.length === 0 ? (
+      ) : inboxError ? null : notices.length === 0 ? (
         <p className="py-20 text-center text-muted-foreground">
           No pending uploads. New screenshot uploads will appear here.
         </p>
       ) : (
         <ul className="mt-6 space-y-4">
-          {notices.map((n) => {
-            const app = getApp(n.appId);
+          {uploadGroups.map((g) => {
+            const app = getApp(g.appId);
+            const multi = g.items.length > 1;
             return (
               <li
-                key={n.id}
-                className="flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-card p-4"
+                key={g.key}
+                className="rounded-2xl border border-border bg-card p-4"
               >
-                <div className="h-24 w-14 shrink-0 overflow-hidden rounded-lg bg-secondary">
-                  {thumbs[n.id] && (
-                    <img
-                      src={thumbs[n.id]}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-semibold">
                     {app ? (
                       <Link
-                        to={`/app/${encodeURIComponent(n.appId)}`}
+                        to={`/app/${encodeURIComponent(g.appId)}`}
                         className="hover:underline"
                       >
                         {app.name}
                       </Link>
-                    ) : submissionFor(n.appId) ? (
+                    ) : submissionFor(g.appId) ? (
                       <>
-                        {submissionFor(n.appId)!.sub.name}{" "}
+                        {submissionFor(g.appId)!.sub.name}{" "}
                         <span className="text-xs font-normal text-muted-foreground">
                           — pending submission (publish it above)
                         </span>
                       </>
                     ) : (
-                      <span title={n.appId}>Unknown app</span>
+                      <span title={g.appId}>Unknown app</span>
                     )}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    from {actorLabel(n.actor)}
-                    {n.published
-                      ? ` · ${new Date(n.published).toLocaleDateString()}`
-                      : ""}
-                  </div>
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {multi && `${g.items.length} screenshots · `}
+                    from {actorLabel(g.actor)}
+                    {groupWhen(g.items) && ` · ${groupWhen(g.items)}`}
+                  </span>
                 </div>
-                <div
-                  className="flex flex-wrap gap-1.5"
-                  role="group"
-                  aria-label="Screen pattern tags"
-                >
-                  {SCREEN_PATTERNS.map((p) => {
-                    const active = (patterns[n.id] || []).includes(p);
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => toggleTag(n.id, p)}
-                        disabled={!!busy}
-                        aria-pressed={active}
-                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                          active
-                            ? "border-foreground bg-foreground text-background"
-                            : "border-border text-muted-foreground hover:text-foreground"
-                        }`}
+
+                {/* One row per screenshot: flows stay per-image, the batch is
+                    published or dismissed as a whole. */}
+                <ul className="mt-3 space-y-3">
+                  {g.items.map((n) => (
+                    <li key={n.id} className="flex flex-wrap items-center gap-4">
+                      <div className="h-24 w-14 shrink-0 overflow-hidden rounded-lg bg-secondary">
+                        {thumbs[n.id] && (
+                          <img src={thumbs[n.id]} alt="" className="h-full w-full object-cover" />
+                        )}
+                      </div>
+                      <div
+                        className="flex flex-wrap gap-1.5"
+                        role="group"
+                        aria-label="Screen pattern tags"
                       >
-                        {p}
-                      </button>
-                    );
-                  })}
+                        {SCREEN_PATTERNS.map((p) => {
+                          const active = (patterns[n.id] || []).includes(p);
+                          return (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => toggleTag(n.id, p)}
+                              disabled={!!busy}
+                              aria-pressed={active}
+                              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                active
+                                  ? "border-foreground bg-foreground text-background"
+                                  : "border-border text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              {p}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => publishGroup(g)}
+                    disabled={busy === g.key}
+                    className="gap-1.5"
+                  >
+                    <Check className="h-4 w-4" />
+                    {multi ? `Publish all ${g.items.length}` : "Publish"}
+                  </Button>
+                  <Button
+                    onClick={() => dismissGroup(g)}
+                    disabled={busy === g.key}
+                    variant="outline"
+                    className="gap-1.5"
+                  >
+                    <X className="h-4 w-4" /> {multi ? "Dismiss all" : "Dismiss"}
+                  </Button>
                 </div>
-                <Button
-                  onClick={() => publish(n)}
-                  disabled={busy === n.id}
-                  className="gap-1.5"
-                >
-                  <Check className="h-4 w-4" /> Publish
-                </Button>
-                <Button
-                  onClick={() => dismiss(n)}
-                  disabled={busy === n.id}
-                  variant="outline"
-                  className="gap-1.5"
-                >
-                  <X className="h-4 w-4" /> Dismiss
-                </Button>
               </li>
             );
           })}
         </ul>
       )}
+
+      {/* Dismissed — nothing is deleted outright, so a mis-click or a change of
+          mind is recoverable, and the record of a contribution survives. */}
+      <div className="mt-12">
+        <button
+          type="button"
+          onClick={() => setShowDismissed((v) => !v)}
+          className="flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
+          aria-expanded={showDismissed}
+        >
+          <Archive className="h-4 w-4" />
+          Dismissed ({dismissed.length})
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${showDismissed ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {showDismissed &&
+          (dismissed.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Nothing dismissed yet. Dismissed uploads, submissions, removal and
+              moderator requests are kept here and can be put back.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-2">
+              {dismissed.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">
+                      {d.summary || d.type || "Notification"}
+                      {d.appName && ` — ${d.appName}`}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      from {actorLabel(d.actor)}
+                      {d.dismissedAt &&
+                        ` · dismissed ${new Date(d.dismissedAt).toLocaleDateString()}`}
+                      {d.dismissedBy && ` by ${actorLabel(d.dismissedBy)}`}
+                    </div>
+                    {d.content && (
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {d.content}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    onClick={() => restore(d)}
+                    disabled={busy === d.id}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                  >
+                    <Undo2 className="h-4 w-4" /> Restore
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ))}
+      </div>
     </div>
   );
 }

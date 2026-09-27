@@ -21,8 +21,8 @@ test.describe("Solid App Gallery", () => {
     page,
   }) => {
     await page.goto("/");
-    const firstBookmark = page.locator('button[aria-label="Add bookmark"]').first();
-    await firstBookmark.click();
+    await page.locator('button[aria-label^="Actions for "]').first().click();
+    await page.getByRole("menuitem", { name: "Save", exact: true }).click();
 
     // Nav badge reflects the count.
     const badge = page.locator('a[aria-label="Bookmarks"] span');
@@ -42,7 +42,10 @@ test.describe("Solid App Gallery", () => {
     ).toHaveCount(1);
 
     // Un-bookmark from the page -> empty state.
-    await page.locator('button[aria-label="Remove bookmark"]').first().click();
+    await page.locator('button[aria-label^="Actions for "]').first().click();
+    await page
+      .getByRole("menuitem", { name: "Remove bookmark", exact: true })
+      .click();
     await expect(page.getByText(/No bookmarks yet/i)).toBeVisible();
   });
 
@@ -57,22 +60,44 @@ test.describe("Solid App Gallery", () => {
 
   test("screens view filters by login pattern (vision-tagged)", async ({ page }) => {
     await page.goto("/screens?pattern=Login");
-    await expect(page.getByText(/screens$/).first()).toBeVisible();
+    await expect(page.getByText("Login", { exact: true }).first()).toBeVisible();
     // Login-tagged screens exist (Focus, profile-editor, …); cards open /screen/.
     await expect(page.locator('a[href^="/screen/"]').first()).toBeVisible();
   });
 
   test("flows view shows onboarding flow rows", async ({ page }) => {
     await page.goto("/flows?action=Onboarding");
-    await expect(page.getByText(/flows$/).first()).toBeVisible();
     await expect(page.getByText("Onboarding").first()).toBeVisible();
+    await expect(page.locator('a[href^="/screen/"]').first()).toBeVisible();
+  });
+
+  test("shows published and screen-derived data shapes", async ({ page }) => {
+    const linkml = await page.request.get("/shapes/gallery-shacl", {
+      headers: { Accept: "application/yaml" },
+    });
+    expect(linkml.ok()).toBeTruthy();
+    expect(linkml.headers()["content-type"]).toContain("application/yaml");
+    expect(await linkml.text()).toContain("name: gallery-shapes");
+
+    await page.goto("/");
+    await page.getByRole("link", { name: "Leptum", exact: true }).first().click();
+
+    await expect(page.getByRole("heading", { name: "Published shapes" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "SHACL", exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Data seen on screens" })).toBeVisible();
+
+    await page.locator('a[href^="/screen/"]').first().click();
+    await expect(page.getByRole("button", { name: "Data", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Comments", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mark data" })).toBeVisible();
   });
 
   test("logs into the Solid pod (sign-in)", async ({ page }) => {
     await loginToGallery(page);
     // Avatar menu shows the WebID when opened.
-    await page.locator("header button").last().click();
-    await expect(page.getByText(/Signed in/i)).toBeVisible();
+    await page.getByRole("button", { name: "Account", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Your activity" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Log out" })).toBeVisible();
   });
 
   test("uploads screenshots for an app to the pod", async ({ page }) => {
@@ -112,6 +137,7 @@ test.describe("Solid App Gallery", () => {
     // Navigate within the SPA (keeps the in-memory Solid session) to a screen.
     await page.getByRole("link", { name: "Screens", exact: true }).click();
     await page.locator('a[href^="/screen/"]').first().click();
+    await page.getByRole("button", { name: "Comments", exact: true }).click();
 
     const stamp = Date.now();
     const aside = page.locator("aside");
@@ -135,6 +161,7 @@ test.describe("Solid App Gallery", () => {
     // the pod) — both comments reappear in their tabs.
     await page.getByRole("button", { name: "Close" }).click();
     await page.locator('a[href^="/screen/"]').first().click();
+    await page.getByRole("button", { name: "Comments", exact: true }).click();
     await expect(aside.getByText(`public ${stamp}`)).toBeVisible({ timeout: 25_000 });
     await page.getByRole("button", { name: /^private$/i }).click();
     await expect(aside.getByText(`private ${stamp}`)).toBeVisible({ timeout: 25_000 });
