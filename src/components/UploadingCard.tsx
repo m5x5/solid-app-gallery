@@ -21,7 +21,7 @@ export function UploadingCard({
       aria-live="polite"
       aria-label={label}
       className={cn(
-        "relative w-full overflow-hidden bg-zinc-900 ring-1 ring-white/10",
+        "relative w-full overflow-hidden bg-zinc-900 ring-1 ring-border",
         aspect,
         rounded
       )}

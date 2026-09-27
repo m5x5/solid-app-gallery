@@ -1,4 +1,4 @@
-import { Outlet, NavLink, type RouteObject } from "react-router-dom";
+import { Outlet, NavLink, useLocation, type RouteObject } from "react-router-dom";
 import { Agentation } from "agentation";
 import { TopNav } from "@/components/TopNav";
 import { Discover } from "@/pages/Discover";
@@ -9,15 +9,20 @@ import { AppDetail } from "@/pages/AppDetail";
 import { AuthorDetail } from "@/pages/AuthorDetail";
 import { Participation } from "@/pages/Participation";
 import { Bookmarks } from "@/pages/Bookmarks";
+import { Inbox } from "@/pages/Inbox";
 import { ScreenDetail } from "@/pages/ScreenDetail";
 import { Review } from "@/pages/Review";
+import { About } from "@/pages/About";
 import { useSolid } from "@/lib/solid-context";
 import { useEffect, useState } from "react";
 import { useDevice, type Device } from "@/lib/device-context";
+import { useShapeLang } from "@/lib/shape-lang-context";
+import { SHAPE_LANGS } from "@/lib/shapes";
 import { subscribeCatalog } from "@/lib/apps";
 import { usePendingSubmissionFlush } from "@/lib/use-pending-flush";
 import { Smartphone, Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AppErrorBoundary } from "@/components/ErrorBoundary";
 
 const SUBNAV = [
   { to: "/", label: "Discover", end: true },
@@ -26,8 +31,21 @@ const SUBNAV = [
   { to: "/participation", label: "Participation" },
 ];
 
+// Routes whose screenshots are actually split by device (Discover, Screens,
+// and an author's screenshot grid) — everywhere else the toggle would be a
+// no-op, so it's hidden there instead of sitting around doing nothing.
+function deviceToggleApplies(pathname: string): boolean {
+  return pathname === "/" || pathname === "/screens" || pathname.startsWith("/author/");
+}
+
+// App pages render data shapes; the screen detail carries an inline switch.
+function shapeLangApplies(pathname: string): boolean {
+  return pathname.startsWith("/app/");
+}
+
 function SubNav() {
   const { isAdmin } = useSolid();
+  const { pathname } = useLocation();
   const items = isAdmin
     ? [...SUBNAV, { to: "/review", label: "Review" }]
     : SUBNAV;
@@ -51,8 +69,34 @@ function SubNav() {
             {s.label}
           </NavLink>
         ))}
-        <DeviceToggle />
+        {shapeLangApplies(pathname) && <ShapeLangToggle className="ml-auto" />}
+        {deviceToggleApplies(pathname) && <DeviceToggle />}
       </div>
+    </div>
+  );
+}
+
+// Global shape-notation switch — LinkML / SHACL / ShEx for every shape panel.
+function ShapeLangToggle({ className }: { className?: string }) {
+  const { lang, setLang } = useShapeLang();
+  return (
+    <div className={cn("flex shrink-0 items-center gap-1 rounded-full bg-secondary p-1", className)}>
+      {SHAPE_LANGS.map(({ key, label }) => (
+        <button
+          key={key}
+          onClick={() => setLang(key)}
+          aria-pressed={lang === key}
+          title={`Show shapes as ${label}`}
+          className={cn(
+            "h-7 rounded-full px-2.5 text-xs font-medium transition-colors",
+            lang === key
+              ? "bg-background text-foreground shadow"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -96,7 +140,9 @@ export const routes: RouteObject[] = [
   { path: "/participation", element: <Participation /> },
   { path: "/submit", element: <Submit /> },
   { path: "/bookmarks", element: <Bookmarks /> },
+  { path: "/inbox", element: <Inbox /> },
   { path: "/review", element: <Review /> },
+  { path: "/about", element: <About /> },
   { path: "/app/:id", element: <AppDetail /> },
   { path: "/author/:id", element: <AuthorDetail /> },
   { path: "/screen/:id", element: <ScreenDetail /> },
@@ -114,7 +160,10 @@ export default function App() {
       <TopNav />
       <SubNav />
       <main key={catalogVersion}>
-        <Outlet />
+        {/* A crashing page keeps the nav usable and recovers on navigation. */}
+        <AppErrorBoundary>
+          <Outlet />
+        </AppErrorBoundary>
       </main>
       {import.meta.env.DEV && <Agentation endpoint="http://localhost:4747" />}
     </div>

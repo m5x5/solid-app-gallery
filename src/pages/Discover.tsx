@@ -1,9 +1,12 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { topTerms, useAllRegions } from "@/lib/regions";
+import { curie } from "@/lib/vocab";
 import { Link } from "react-router-dom";
 import { SlidersHorizontal } from "lucide-react";
 import {
   apps,
   categories,
+  statuses,
   qualityRank,
   appHasDevice,
   screenPatternCounts,
@@ -32,6 +35,11 @@ const FLOW_ACTION_LABELS: Record<string, string> = {
 };
 
 function QuickLinks() {
+  const { regions } = useAllRegions();
+  const shapeLinks = topTerms(regions, 5).map((t) => ({
+    label: curie(t.term),
+    to: `/screens?term=${encodeURIComponent(t.term)}`,
+  }));
   const cols: { title: string; links: { label: string; to: string }[] }[] = [
     {
       title: "Categories",
@@ -54,9 +62,10 @@ function QuickLinks() {
         to: `/flows?action=${p.action}`,
       })),
     },
+    ...(shapeLinks.length ? [{ title: "Shapes", links: shapeLinks }] : []),
   ];
   return (
-    <div className="hidden gap-x-6 gap-y-8 md:grid md:grid-cols-3 md:gap-x-10">
+    <div className={cols.length > 3 ? "hidden gap-x-6 gap-y-8 md:grid md:grid-cols-4 md:gap-x-10" : "hidden gap-x-6 gap-y-8 md:grid md:grid-cols-3 md:gap-x-10"}>
       {cols.map((col) => (
         <div key={col.title}>
           <div className="mb-3 text-sm text-muted-foreground">{col.title}</div>
@@ -278,14 +287,19 @@ function CapabilityFooter() {
         </dl>
       </div>
 
-      <a
-        href={validatorUrl}
-        target="_blank"
-        rel="noopener"
-        className="underline hover:text-foreground"
-      >
-        View Application Capabilities
-      </a>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Link to="/about" className="underline hover:text-foreground">
+          About
+        </Link>
+        <a
+          href={validatorUrl}
+          target="_blank"
+          rel="noopener"
+          className="underline hover:text-foreground"
+        >
+          View Application Capabilities
+        </a>
+      </div>
     </footer>
   );
 }
@@ -293,13 +307,17 @@ function CapabilityFooter() {
 export function Discover() {
   const [tab, setTab] = useState<Tab>("Latest");
   const [cat, setCat] = useState("");
+  const [status, setStatus] = useState("");
   const { device } = useDevice();
   const catLabel = categories.find((c) => c.key === cat)?.label;
 
   const sorted = useMemo(() => {
     // Only apps that have a screenshot for the selected viewport.
     const list = apps.filter(
-      (a) => appHasDevice(a.id, device) && (!cat || a.categoryKey === cat)
+      (a) =>
+        appHasDevice(a.id, device) &&
+        (!cat || a.categoryKey === cat) &&
+        (!status || a.status === status)
     );
     if (tab === "Latest") {
       list.sort(
@@ -316,7 +334,7 @@ export function Discover() {
       .map((a, idx) => ({ a, idx }))
       .sort((x, y) => qualityRank(x.a.id) - qualityRank(y.a.id) || x.idx - y.idx)
       .map((e) => e.a);
-  }, [tab, device, cat]);
+  }, [tab, device, cat, status]);
 
   useHead({
     description:
@@ -355,27 +373,49 @@ export function Discover() {
             </button>
           ))}
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className={cn(
-                "flex items-center gap-2 text-sm hover:text-foreground",
-                cat ? "text-foreground" : "text-muted-foreground"
-              )}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              {catLabel ? `Filter: ${catLabel}` : "Filter"}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setCat("")}>All categories</DropdownMenuItem>
-            {categories.map((c) => (
-              <DropdownMenuItem key={c.key} onClick={() => setCat(c.key)}>
-                {c.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center gap-2 text-sm hover:text-foreground",
+                  status ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                {status ? `Maturity: ${status}` : "Maturity"}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setStatus("")}>All maturity levels</DropdownMenuItem>
+              {statuses.map((s) => (
+                <DropdownMenuItem key={s.key} onClick={() => setStatus(s.key)}>
+                  {s.label} <span className="ml-1 text-muted-foreground">({s.count})</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center gap-2 text-sm hover:text-foreground",
+                  cat ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                {catLabel ? `Filter: ${catLabel}` : "Filter"}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setCat("")}>All categories</DropdownMenuItem>
+              {categories.map((c) => (
+                <DropdownMenuItem key={c.key} onClick={() => setCat(c.key)}>
+                  {c.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <div

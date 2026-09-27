@@ -313,7 +313,7 @@ export function SubmissionScreenshots({
                 disabled={!flowEditing}
                 aria-pressed={flowEditing ? selected : undefined}
                 className={cn(
-                  "block w-full overflow-hidden rounded-xl bg-zinc-950 ring-1 ring-white/10 transition",
+                  "block w-full overflow-hidden rounded-xl bg-zinc-950 ring-1 ring-border transition",
                   isDesktop ? "aspect-[16/10]" : "aspect-[9/16] bg-zinc-900",
                   flowEditing ? "hover:opacity-90" : "cursor-grab active:cursor-grabbing"
                 )}

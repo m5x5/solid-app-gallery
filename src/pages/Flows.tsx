@@ -69,7 +69,7 @@ function FlowRow({ app, tags }: { app: App; tags: string[] }) {
       </div>
       <button
         onClick={scrollRight}
-        className="absolute -right-2 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 backdrop-blur hover:bg-white/25 md:flex"
+        className="absolute -right-2 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-secondary/80 text-foreground backdrop-blur hover:bg-secondary md:flex"
         aria-label="scroll"
       >
         <ChevronRight className="h-5 w-5" />

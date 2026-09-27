@@ -16,11 +16,15 @@ export function AuthorAvatar({
   author,
   className,
   transitionId,
+  imageProperty,
 }: {
   author: Pick<Author, "name" | "webId">;
   className?: string;
   // Author id to derive the view-transition-name from (see above).
   transitionId?: string;
+  // The profile page identifies its avatar as schema:image. Other uses are
+  // presentational author chips and intentionally leave this unset.
+  imageProperty?: string;
 }) {
   const url = useAvatar(author.webId);
   const [broken, setBroken] = useState(false);
@@ -34,6 +38,7 @@ export function AuthorAvatar({
     >
       {url && !broken ? (
         <img
+          property={imageProperty}
           src={url}
           alt=""
           className="h-full w-full object-cover"

@@ -5,6 +5,7 @@ import { ChevronDown, X } from "lucide-react";
 import {
   apps,
   categories,
+  statuses,
   qualityRank,
   screenTags,
   frameTags,
@@ -12,6 +13,8 @@ import {
 } from "@/lib/apps";
 import { ScreenCard } from "@/components/cards";
 import { useDevice } from "@/lib/device-context";
+import { useAllRegions } from "@/lib/regions";
+import { curie } from "@/lib/vocab";
 import { useHead, JsonLd, itemListJsonLd } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import {
@@ -64,7 +67,10 @@ export function Screens() {
   const [params, setParams] = useSearchParams();
   const q = params.get("q")?.toLowerCase() || "";
   const cat = params.get("cat") || "";
+  const status = params.get("status") || "";
   const pattern = params.get("pattern") || "";
+  const term = params.get("term") || "";
+  const { regions: allRegions } = useAllRegions();
   const { device } = useDevice();
 
   // One card per captured frame (not per app), for the selected viewport.
@@ -77,7 +83,9 @@ export function Screens() {
     };
 
     const matched = apps.filter((a) => {
+      if (term && !allRegions.some((r) => r.appId === a.id && r.term === term)) return false;
       if (cat && a.categoryKey !== cat) return false;
+      if (status && a.status !== status) return false;
       if (q) {
         const hay = `${a.name} ${a.description} ${a.technicalKeyword || ""} ${
           a.socialKeyword || ""
@@ -105,16 +113,16 @@ export function Screens() {
               (!pattern || tagsFor(a.id, f.path).includes(pattern))
           );
       });
-  }, [q, cat, pattern, device]);
+  }, [q, cat, status, pattern, term, allRegions, device]);
 
   const catLabel = categories.find((c) => c.key === cat)?.label;
 
-  const headTitle = [catLabel, pattern && `${pattern} screens`, q && `“${q}”`]
+  const headTitle = [catLabel, status, pattern && `${pattern} screens`, term && curie(term), q && `“${q}”`]
     .filter(Boolean)
     .join(" · ");
   useHead({
     title: headTitle ? `Screens: ${headTitle}` : "Screens",
-    description: `Browse ${screens.length} Solid app screens${catLabel ? ` in ${catLabel}` : ""}${pattern ? ` showing ${pattern.toLowerCase()}` : ""} — real captured screenshots.`,
+    description: `Browse ${screens.length} Solid app screens${catLabel ? ` in ${catLabel}` : ""}${status ? ` (${status})` : ""}${pattern ? ` showing ${pattern.toLowerCase()}` : ""} — real captured screenshots.`,
     path: "/screens",
   });
   const listedApps = useMemo(() => {
@@ -131,6 +139,12 @@ export function Screens() {
   function setCat(key: string) {
     const next = new URLSearchParams(params);
     next.set("cat", key);
+    setParams(next);
+  }
+
+  function setStatus(key: string) {
+    const next = new URLSearchParams(params);
+    next.set("status", key);
     setParams(next);
   }
 
@@ -156,9 +170,31 @@ export function Screens() {
               {catLabel}
             </Pill>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Pill active={!!status}>Maturity</Pill>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {statuses.map((s) => (
+                <DropdownMenuItem key={s.key} onClick={() => setStatus(s.key)}>
+                  {s.label} <span className="ml-1 text-muted-foreground">({s.count})</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {status && (
+            <Pill active onClear={() => clear("status")}>
+              {status}
+            </Pill>
+          )}
           {pattern && (
             <Pill active onClear={() => clear("pattern")}>
               {pattern}
+            </Pill>
+          )}
+          {term && (
+            <Pill active onClear={() => clear("term")}>
+              <code>{curie(term)}</code>
             </Pill>
           )}
           {q && (

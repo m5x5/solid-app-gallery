@@ -33,8 +33,8 @@ function suggest(q: string): App[] {
 }
 
 // Global search: type-ahead suggestions (app icon + name + category) with
-// keyboard navigation; Enter with nothing highlighted searches the Screens
-// grid, an arrow-selected or clicked suggestion opens the app.
+// keyboard navigation. The first matching result is selected immediately, so
+// Enter opens it; an empty result set can still be submitted to search Screens.
 export function SearchBox({ className }: { className?: string }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -51,7 +51,10 @@ export function SearchBox({ className }: { className?: string }) {
   }, [query]);
   const rows = hits.length + (catHit ? 1 : 0);
 
-  useEffect(() => setActive(-1), [query]);
+  // Keep a concrete default selection whenever the result list changes. This
+  // makes Enter follow the visible first suggestion rather than submitting the
+  // form and navigating to the Screens search.
+  useEffect(() => setActive(rows > 0 ? 0 : -1), [rows, query]);
 
   // Close on outside click.
   useEffect(() => {
@@ -188,7 +191,7 @@ export function SearchBox({ className }: { className?: string }) {
                 </button>
               )}
               <div className="mt-1 border-t border-border px-3 pb-1 pt-2 text-xs text-muted-foreground">
-                Enter to search all screens for “{query.trim()}”
+                Press Enter to open the selected result
               </div>
             </>
           )}

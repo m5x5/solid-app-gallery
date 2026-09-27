@@ -3,6 +3,58 @@
 @tailwind utilities;
 
 @layer base {
+  /* Light is the default; dark follows the OS unless a .light/.dark class
+     pins it (no in-app toggle today — the class hooks just keep that open). */
+  :root {
+    /* Page is white; cards/surfaces sit on it as a light grey, mirroring the
+       dark theme where the card is a step lighter than the background. */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 96%;
+    --card-foreground: 0 0% 9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 92%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 90%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89%;
+    --input: 0 0% 89%;
+    --ring: 0 0% 45%;
+    --radius: 0.75rem;
+    /* Solid's brand purple (#7C4DFF, from the official emblem). Identical in
+       both themes — a brand colour shouldn't drift with the theme. */
+    --brand: 255.8 100% 65.1%;
+    --brand-foreground: 0 0% 100%;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) {
+      --background: 0 0% 4%;
+      --foreground: 0 0% 98%;
+      --card: 0 0% 7%;
+      --card-foreground: 0 0% 98%;
+      --primary: 0 0% 98%;
+      --primary-foreground: 0 0% 9%;
+      --secondary: 0 0% 13%;
+      --secondary-foreground: 0 0% 98%;
+      --muted: 0 0% 13%;
+      --muted-foreground: 0 0% 60%;
+      --accent: 0 0% 15%;
+      --accent-foreground: 0 0% 98%;
+      --destructive: 0 72% 51%;
+      --destructive-foreground: 0 0% 98%;
+      --border: 0 0% 16%;
+      --input: 0 0% 16%;
+      --ring: 0 0% 70%;
+      --radius: 0.75rem;
+    }
+  }
+
   :root.dark,
   .dark {
     --background: 0 0% 4%;

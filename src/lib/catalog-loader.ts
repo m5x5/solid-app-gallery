@@ -5,6 +5,7 @@
 import { Parser, Store, Writer } from "n3";
 import { CATALOG_URL } from "@/config";
 import type { App, Author, ScreenEntry } from "./apps";
+import { PATTERN_TAGS } from "./solid-data";
 
 const EX = "http://example.org#";
 const SCHEMA = "http://schema.org/";
@@ -15,9 +16,22 @@ const PARTICIPATION_SUBTYPES = new Set([
   "GeneralPurposePodService",
   "CommunicationService",
 ]);
-const APP_TAGS = ["Login", "Onboarding", "Dashboard", "Profile", "Signup"];
+// Keyword values we accept off a screenshot node: the screen patterns plus the
+// "Highlight" curation marker. Shared with the writers so a tag that can be
+// written is also read back (a local copy used to silently drop new tags).
+const APP_TAGS = PATTERN_TAGS;
 
 const localName = (iri: string) => iri.split(/[#/]/).pop() || iri;
+
+// A bare domain, e.g. "sleepy.bike" or "solidweb.org" — no spaces, no scheme,
+// just label(s) + a dotted TLD. Several catalog entries are named after their
+// own domain but never got an explicit ex:landingPage; this lets those apps
+// still get an "Open" link and a resolved favicon instead of showing nothing.
+const BARE_DOMAIN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i;
+function landingPageFallback(name: string): string | undefined {
+  return BARE_DOMAIN.test(name) ? `https://${name}/` : undefined;
+}
+
 function domainOf(url?: string) {
   if (!url) return undefined;
   try {
@@ -122,7 +136,7 @@ export async function fetchCatalog(): Promise<CatalogData | null> {
       const st = store.getObjects(id, EX + "status", null)[0]?.value;
       return st ? localName(st) : "";
     })();
-    const landingPage = iri(id, "landingPage");
+    const landingPage = iri(id, "landingPage") || landingPageFallback(name);
     const repository = iri(id, "repository");
     const domain = domainOf(landingPage || repository);
     const isSoftware =

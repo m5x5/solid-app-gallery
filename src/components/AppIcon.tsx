@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 // App icon: the app's own icon as resolved by api/icon.ts (web-manifest icon,
 // apple-touch-icon, or the largest favicon the site declares) — nothing from
 // third-party favicon services. If the site has none, the app's initials.
-function iconCandidates(app: App): string[] {
+function iconCandidates(app: Pick<App, "icon">): string[] {
   return app.icon ? [app.icon] : [];
 }
 
@@ -16,7 +16,7 @@ export function AppIcon({
   rounded = "rounded-md",
   style,
 }: {
-  app: App;
+  app: Pick<App, "id" | "name" | "icon">;
   size?: number;
   className?: string;
   rounded?: string;
@@ -31,7 +31,10 @@ export function AppIcon({
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden bg-secondary text-[10px] font-bold",
+        // White tile in both themes — most app icons are transparent PNGs drawn
+        // for a light background — with a hairline border to define its edge.
+        // The initials fallback needs its own dark text for the same reason.
+        "flex shrink-0 items-center justify-center overflow-hidden border border-border bg-white text-[10px] font-bold text-neutral-900",
         rounded,
         className
       )}
@@ -42,7 +45,7 @@ export function AppIcon({
           src={src}
           alt=""
           loading="lazy"
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
           onError={() => setIdx((i) => i + 1)}
         />
       ) : (

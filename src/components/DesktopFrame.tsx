@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
 import { accentFor, initialsFor, type App } from "@/lib/apps";
 import { cn } from "@/lib/utils";
 import { responsiveImg } from "@/lib/img";
+import { AnnotatedImage } from "./RegionOverlay";
 
 // A browser-window mockup for desktop (landscape) screenshots — many Solid apps
 // are desktop-first, so wide captures get a window chrome instead of a phone.
@@ -10,21 +12,40 @@ export function DesktopFrame({
   className,
   sizes = "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw",
   priority = false,
+  overlay,
 }: {
   app: App;
   image?: string;
   className?: string;
   sizes?: string;
   priority?: boolean;
+  // Data-region boxes, aligned to the screenshot rather than the frame.
+  overlay?: ReactNode;
 }) {
   return (
     <div
       className={cn(
-        "w-full overflow-hidden rounded-xl bg-zinc-950 ring-1 ring-white/10",
+        "w-full overflow-hidden rounded-xl bg-zinc-950 ring-1 ring-border",
         className
       )}
     >
-      {image ? (
+      {image && overlay ? (
+        <div className="aspect-[16/10] w-full">
+          <AnnotatedImage
+            src={image}
+            alt={app.name}
+            overlay={overlay}
+            imgProps={{
+              ...responsiveImg(image, sizes),
+              width: 320,
+              height: 200,
+              decoding: "async",
+              loading: priority ? "eager" : "lazy",
+              ...(priority ? { fetchpriority: "high" } : {}),
+            }}
+          />
+        </div>
+      ) : image ? (
         <img
           {...responsiveImg(image, sizes)}
           alt={app.name}
@@ -32,7 +53,7 @@ export function DesktopFrame({
           height={200}
           decoding="async"
           loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : "auto"}
+          {...(priority ? { fetchpriority: "high" } : {})}
           className="aspect-[16/10] w-full bg-zinc-950 object-contain"
         />
       ) : (

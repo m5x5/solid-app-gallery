@@ -96,6 +96,12 @@ export let apps: App[] = [];
 export let participation: App[] = [];
 export let needsContribution: App[] = [];
 export let categories: Category[] = [];
+// Maturity/stability filter — ex:status values seen on visible apps (Archived
+// is excluded everywhere already, so it never shows up here). Ordered so the
+// most "usable in practice" statuses lead: Production, then Development,
+// then Exploration, then anything unrecognized.
+const STATUS_ORDER = ["Production", "Development", "Exploration"];
+export let statuses: Category[] = [];
 
 function rebuild() {
   const visible = appsAll.filter((a) => !hidden(a));
@@ -114,6 +120,20 @@ function rebuild() {
     counts.set(a.categoryKey, c);
   }
   categories = [...counts.values()].sort((a, b) => b.count - a.count);
+
+  const statusCounts = new Map<string, number>();
+  for (const a of apps) {
+    if (!a.status) continue;
+    statusCounts.set(a.status, (statusCounts.get(a.status) || 0) + 1);
+  }
+  statuses = [...statusCounts.entries()]
+    .map(([key, count]) => ({ key, label: key, count }))
+    .sort((a, b) => {
+      const ra = STATUS_ORDER.indexOf(a.key);
+      const rb = STATUS_ORDER.indexOf(b.key);
+      if (ra !== rb) return (ra === -1 ? STATUS_ORDER.length : ra) - (rb === -1 ? STATUS_ORDER.length : rb);
+      return b.count - a.count;
+    });
 }
 
 // Load the canonical catalog from the admin pod (the only source of truth).
@@ -191,6 +211,11 @@ export function contributionsBy(webId: string): {
   return { submitted, screenshots };
 }
 
+// WebID of whoever uploaded catalog screenshot `index` of this app, if recorded.
+export function frameCreator(id: string, index: number): string | undefined {
+  return SCREENS[id]?.frames?.[index]?.creator;
+}
+
 // Recorded flow videos (webm) for this app, each with a label.
 export function screenVideos(id: string): ScreenVideo[] {
   const e = SCREENS[id];
@@ -217,6 +242,21 @@ export function screenFrames(id: string, device?: Device): string[] {
 }
 
 // Does this app have at least one screenshot for the given viewport?
+// Curation marker (see HIGHLIGHT_TAG in lib/solid-data): the frames an admin
+// picked for the discover card. Kept out of SCREEN_PATTERNS so it never shows
+// up as a flow or screen filter.
+export const HIGHLIGHT_TAG = "Highlight";
+
+// Screens the discover card pages through: the highlighted ones when an admin
+// has picked any, otherwise the first few in catalog order. Capped either way —
+// the card is a teaser, the app page shows every screen.
+export const MAX_CARD_FRAMES = 4;
+export function cardFrames(id: string, device?: Device): string[] {
+  const all = screenFrames(id, device);
+  const picked = all.filter((path) => frameTags(id, path).includes(HIGHLIGHT_TAG));
+  return (picked.length ? picked : all).slice(0, MAX_CARD_FRAMES);
+}
+
 export function appHasDevice(id: string, device: Device): boolean {
   return screenFrames(id, device).length > 0;
 }

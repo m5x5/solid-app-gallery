@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import { Wifi, BatteryFull, Signal } from "lucide-react";
 import { accentFor, initialsFor, type App } from "@/lib/apps";
 import { cn } from "@/lib/utils";
 import { responsiveImg } from "@/lib/img";
+import { AnnotatedImage } from "./RegionOverlay";
 
 // A phone mockup. If `image` is given it shows a real screenshot; otherwise a
 // synthetic "screen" generated from the app's identity (Mobbin-style placeholder).
@@ -14,6 +16,7 @@ export function PhoneFrame({
   step = 0,
   sizes = "(max-width: 640px) 45vw, 230px",
   priority = false,
+  overlay,
 }: {
   app: App;
   image?: string;
@@ -24,16 +27,32 @@ export function PhoneFrame({
   sizes?: string;
   // Above-the-fold: fetch eagerly and first; everything else lazy.
   priority?: boolean;
+  // Data-region boxes, aligned to the screenshot rather than the frame.
+  overlay?: ReactNode;
 }) {
   const accent = accentFor(app.id);
   return (
     <div
       className={cn(
-        "relative aspect-[9/19.5] w-full overflow-hidden rounded-[1.6rem] bg-zinc-900 ring-1 ring-white/10",
+        "relative aspect-[9/19.5] w-full overflow-hidden rounded-[1.6rem] bg-zinc-900 ring-1 ring-border",
         className
       )}
     >
-      {image ? (
+      {image && overlay ? (
+        <AnnotatedImage
+          src={image}
+          alt={app.name}
+          overlay={overlay}
+          imgProps={{
+            ...responsiveImg(image, sizes),
+            width: 180,
+            height: 390,
+            decoding: "async",
+            loading: priority ? "eager" : "lazy",
+            ...(priority ? { fetchpriority: "high" } : {}),
+          }}
+        />
+      ) : image ? (
         <img
           {...responsiveImg(image, sizes)}
           alt={app.name}
@@ -41,7 +60,7 @@ export function PhoneFrame({
           height={390}
           decoding="async"
           loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : "auto"}
+          {...(priority ? { fetchpriority: "high" } : {})}
           className="h-full w-full object-cover"
         />
       ) : (

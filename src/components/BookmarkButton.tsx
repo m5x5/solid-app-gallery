@@ -2,7 +2,8 @@ import { Bookmark } from "lucide-react";
 import { useBookmarks } from "@/lib/bookmarks";
 import { cn } from "@/lib/utils";
 
-// Toggle button used on cards (overlay) and the detail page.
+// Toggle button used on cards (overlay), in the screen lightbox (chrome —
+// matching the close/comments controls beside it) and on the detail page.
 export function BookmarkButton({
   appId,
   className,
@@ -10,7 +11,7 @@ export function BookmarkButton({
 }: {
   appId: string;
   className?: string;
-  variant?: "overlay" | "button";
+  variant?: "overlay" | "button" | "chrome";
 }) {
   const { isBookmarked, toggle } = useBookmarks();
   const active = isBookmarked(appId);
@@ -48,7 +49,10 @@ export function BookmarkButton({
       aria-label={active ? "Remove bookmark" : "Add bookmark"}
       data-testid={`bookmark-${appId}`}
       className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition hover:bg-black/80",
+        "flex h-8 w-8 items-center justify-center rounded-full transition",
+        variant === "chrome"
+          ? "bg-foreground/10 text-foreground hover:bg-foreground/20"
+          : "bg-black/60 text-white backdrop-blur hover:bg-black/80",
         active && "bg-primary text-primary-foreground hover:bg-primary/90",
         className
       )}

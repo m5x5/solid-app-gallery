@@ -118,7 +118,7 @@ export function Participation() {
             return (
               <div
                 key={a.id}
-                className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-3 transition hover:border-white/25"
+                className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-3 transition hover:bg-foreground/[0.06]"
               >
                 <div className="flex items-center gap-3">
                   <Link
@@ -187,7 +187,7 @@ export function Participation() {
                     target="_blank"
                     rel="noreferrer"
                     title={link}
-                    className="flex w-fit items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition hover:border-white/25 hover:text-foreground"
+                    className="flex w-fit items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition hover:bg-foreground/[0.06] hover:text-foreground"
                   >
                     {isGithub ? (
                       <Github className="h-3 w-3" />
