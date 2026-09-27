@@ -19,7 +19,9 @@ type Ctx = {
   isLoggedIn: boolean;
   webId?: string;
   name?: string;
+  nameProperty?: string;
   avatar?: string;
+  avatarProperty?: string;
   isAdmin: boolean;
   // The catalog owner (the admin pod's WebID) — the only one who may manage
   // moderators. Moderators (isAdmin) can publish/review but not change the group.
@@ -35,7 +37,12 @@ export function SolidProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setLoggedIn] = useState(false);
   const [webId, setWebId] = useState<string | undefined>();
   const [admin, setAdmin] = useState(false);
-  const [profile, setProfile] = useState<{ name?: string; avatar?: string }>({});
+  const [profile, setProfile] = useState<{
+    name?: string;
+    nameProperty?: string;
+    avatar?: string;
+    avatarProperty?: string;
+  }>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,11 +89,17 @@ export function SolidProvider({ children }: { children: ReactNode }) {
     isLoggedIn,
     webId,
     name: profile.name,
+    nameProperty: profile.nameProperty,
     avatar: profile.avatar,
+    avatarProperty: profile.avatarProperty,
     isAdmin: admin,
     isOwner: !!webId && webId === ADMIN_WEBID,
     loading,
-    login: (idp = DEFAULT_IDP) => startLogin(idp),
+    login: (idp = DEFAULT_IDP) =>
+      startLogin(idp).catch((err: unknown) => {
+        alert(err instanceof Error ? err.message : "Login failed.");
+        throw err;
+      }),
     logout: async () => {
       await endLogin();
       setLoggedIn(false);

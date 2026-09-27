@@ -24,6 +24,26 @@ three things that matter for contribution:
 | `/submit` | submit a new app (writes Turtle to your pod) |
 | `/participation` | participation opportunities |
 
+## Data shapes and screen regions
+
+The gallery also exposes the data model behind an app's UI:
+
+- On a screen detail page, signed-in visitors can draw a region around a piece
+  of visible data and identify the RDF class or property it shows or edits.
+- Region annotations are stored as W3C Web Annotations under
+  `<admin-pod>/solid-gallery/regions/` and appear as overlays on gallery cards,
+  app pages, and screen pages.
+- Each app's annotations are combined into a downloadable data shape that can
+  be viewed as LinkML, SHACL, or ShEx.
+- If an app publishes W3C Application Capability RDFa, its own linked shape
+  documents and read/write capabilities appear on the app detail page.
+- The Discover page surfaces commonly annotated terms, which link to a
+  vocabulary-term filter on `/screens`.
+
+Before accepting region writes on a new admin pod, run the dev server and then
+`node scripts/setup-regions.mjs` once to create the public-read,
+authenticated-append container and ACL.
+
 ## Data
 
 The catalog lives **in the pod** as `catalog.ttl` (see "the pod is the database"
@@ -48,12 +68,10 @@ desktop and the navbar Mobile/Desktop toggle filters the grids accordingly.
 (`pod.mpeters.dev`, account set via `TEST_POD_EMAIL` — the admin pod is
 `pod.mpeters.dev/test/`):
 
-1. renders the discover gallery
-2. screens filter
-3. flows view
-4. **logs into the pod** (full OIDC + CSS credential + consent)
-5. **uploads screenshots** to the pod
-6. **submits a new app** (Turtle written to the pod)
+The suite covers discovery, bookmarks, listing filters, flows, published and
+screen-derived shapes, and shape content negotiation. Its authenticated flows
+also log into the pod, upload screenshots, write public/private comments, and
+submit an app as Turtle.
 
 ```
 npm run test:e2e
@@ -71,6 +89,7 @@ from the pod at runtime. The admin pod and user pods share the identical layout:
   screens/*.webp       # screenshots          (schema:contentUrl targets)
   videos/*.webm        # flow recordings
   comments/<screen>/   # public comments (oa:Annotation resources)
+  regions/<app>/       # screenshot data regions (oa:Annotation resources)
   submissions/         # user-submitted apps (ex:Software Turtle)
 <admin-pod>/inbox/     # comment notifications (LDN)
 ```
@@ -111,6 +130,10 @@ and kept as portable RDF:
   text, `as:audience` public/private), stored in a per-screen container — public
   in the admin pod, private in the author's pod. Every comment also POSTs an
   ActivityStreams `as:Announce` to the admin's `ldp:inbox` (LDN).
+- **Data regions → W3C Web Annotations.** A region targets a screenshot through
+  an `oa:FragmentSelector` using percentage `xywh` coordinates. Its body names
+  the RDF term shown there, whether the app displays or edits it, and optionally
+  the published shape from which that term came.
 
 ### SHACL is a client/CI contract, not a server feature
 

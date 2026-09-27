@@ -1,0 +1,336 @@
+{
+  "@context": {
+    "acl": "http://www.w3.org/ns/auth/acl#",
+    "interop": "http://www.w3.org/ns/solid/interop#",
+    "skos": "http://www.w3.org/2004/02/skos/core#",
+    "st": "http://www.w3.org/ns/shapetrees#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#"
+  },
+  "@graph": [
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#gallery-contributions-v1",
+      "@type": "interop:AccessNeedGroup",
+      "interop:accessNecessity": {
+        "@id": "interop:AccessRequired"
+      },
+      "interop:accessScenario": {
+        "@id": "interop:PersonalAccess"
+      },
+      "interop:authenticatesAs": {
+        "@id": "interop:SocialAgent"
+      },
+      "interop:hasAccessDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#descriptions-en-v1"
+      },
+      "interop:hasAccessNeed": [
+        {
+          "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#application-submissions-v1"
+        },
+        {
+          "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#screenshots-v1"
+        },
+        {
+          "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#comments-v1"
+        },
+        {
+          "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#preferences-v1"
+        }
+      ]
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#application-submissions-v1",
+      "@type": "interop:AccessNeed",
+      "interop:registeredShapeTree": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#application-submission-tree-v1"
+      },
+      "interop:accessNecessity": {
+        "@id": "interop:AccessRequired"
+      },
+      "interop:accessMode": [
+        {
+          "@id": "acl:Read"
+        },
+        {
+          "@id": "acl:Create"
+        }
+      ],
+      "interop:creatorAccessMode": [
+        {
+          "@id": "acl:Update"
+        },
+        {
+          "@id": "acl:Delete"
+        }
+      ]
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#screenshots-v1",
+      "@type": "interop:AccessNeed",
+      "interop:registeredShapeTree": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#screenshot-tree-v1"
+      },
+      "interop:accessNecessity": {
+        "@id": "interop:AccessOptional"
+      },
+      "interop:accessMode": [
+        {
+          "@id": "acl:Read"
+        },
+        {
+          "@id": "acl:Create"
+        }
+      ],
+      "interop:creatorAccessMode": [
+        {
+          "@id": "acl:Update"
+        },
+        {
+          "@id": "acl:Delete"
+        }
+      ]
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#comments-v1",
+      "@type": "interop:AccessNeed",
+      "interop:registeredShapeTree": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#comment-tree-v1"
+      },
+      "interop:accessNecessity": {
+        "@id": "interop:AccessOptional"
+      },
+      "interop:accessMode": [
+        {
+          "@id": "acl:Read"
+        },
+        {
+          "@id": "acl:Create"
+        }
+      ],
+      "interop:creatorAccessMode": [
+        {
+          "@id": "acl:Update"
+        },
+        {
+          "@id": "acl:Delete"
+        }
+      ]
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#preferences-v1",
+      "@type": "interop:AccessNeed",
+      "interop:registeredShapeTree": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#preferences-tree-v1"
+      },
+      "interop:accessNecessity": {
+        "@id": "interop:AccessOptional"
+      },
+      "interop:accessMode": [
+        {
+          "@id": "acl:Read"
+        },
+        {
+          "@id": "acl:Create"
+        }
+      ],
+      "interop:creatorAccessMode": [
+        {
+          "@id": "acl:Update"
+        },
+        {
+          "@id": "acl:Delete"
+        }
+      ]
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#application-submission-tree-v1",
+      "@type": "st:ShapeTree",
+      "st:expectsType": {
+        "@id": "st:Resource"
+      },
+      "st:shape": {
+        "@id": "https://solid-app-gallery.mpeters.dev/shapes/gallery-shacl#AppAssetsShape"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#screenshot-tree-v1",
+      "@type": "st:ShapeTree",
+      "st:expectsType": {
+        "@id": "st:NonRDFResource"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#comment-tree-v1",
+      "@type": "st:ShapeTree",
+      "st:expectsType": {
+        "@id": "st:Resource"
+      },
+      "st:shape": {
+        "@id": "https://solid-app-gallery.mpeters.dev/shapes/gallery-shacl#AnnotationShape"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#preferences-tree-v1",
+      "@type": "st:ShapeTree",
+      "st:expectsType": {
+        "@id": "st:NonRDFResource"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#descriptions-en-v1",
+      "@type": "interop:AccessDescriptionSet",
+      "interop:usesLanguage": {
+        "@value": "en",
+        "@type": "xsd:language"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#shape-descriptions-en-v1",
+      "st:usesLanguage": {
+        "@value": "en",
+        "@type": "xsd:language"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#application-submission-tree-description-en-v1",
+      "st:inDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#shape-descriptions-en-v1"
+      },
+      "st:describes": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#application-submission-tree-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Solid application submission",
+        "@language": "en"
+      },
+      "skos:definition": {
+        "@value": "A proposed Solid application listing submitted to the gallery for review.",
+        "@language": "en"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#screenshot-tree-description-en-v1",
+      "st:inDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#shape-descriptions-en-v1"
+      },
+      "st:describes": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#screenshot-tree-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Application screenshot",
+        "@language": "en"
+      },
+      "skos:definition": {
+        "@value": "An image contributed to document a Solid application's user interface.",
+        "@language": "en"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#comment-tree-description-en-v1",
+      "st:inDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#shape-descriptions-en-v1"
+      },
+      "st:describes": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#comment-tree-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Gallery comment",
+        "@language": "en"
+      },
+      "skos:definition": {
+        "@value": "A Web Annotation attached to an application screenshot.",
+        "@language": "en"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#preferences-tree-description-en-v1",
+      "st:inDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#shape-descriptions-en-v1"
+      },
+      "st:describes": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#preferences-tree-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Gallery preferences",
+        "@language": "en"
+      },
+      "skos:definition": {
+        "@value": "Personal gallery state such as the list of bookmarked applications.",
+        "@language": "en"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#group-description-en-v1",
+      "@type": "interop:AccessNeedGroupDescription",
+      "interop:inAccessDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#descriptions-en-v1"
+      },
+      "interop:hasAccessNeedGroup": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#gallery-contributions-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Contribute to Solid App Gallery",
+        "@language": "en"
+      },
+      "skos:definition": {
+        "@value": "Allow Solid App Gallery to save app submissions and, optionally, screenshots, comments, and bookmarks in your Solid data.",
+        "@language": "en"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#application-submissions-description-en-v1",
+      "@type": "interop:AccessNeedDescription",
+      "interop:inAccessDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#descriptions-en-v1"
+      },
+      "interop:hasAccessNeed": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#application-submissions-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Save and manage the app listings you submit for review.",
+        "@language": "en"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#screenshots-description-en-v1",
+      "@type": "interop:AccessNeedDescription",
+      "interop:inAccessDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#descriptions-en-v1"
+      },
+      "interop:hasAccessNeed": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#screenshots-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Upload and manage screenshots you contribute.",
+        "@language": "en"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#comments-description-en-v1",
+      "@type": "interop:AccessNeedDescription",
+      "interop:inAccessDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#descriptions-en-v1"
+      },
+      "interop:hasAccessNeed": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#comments-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Save and manage your private gallery comments.",
+        "@language": "en"
+      }
+    },
+    {
+      "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#preferences-description-en-v1",
+      "@type": "interop:AccessNeedDescription",
+      "interop:inAccessDescriptionSet": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#descriptions-en-v1"
+      },
+      "interop:hasAccessNeed": {
+        "@id": "https://solid-app-gallery.mpeters.dev/sai/access-needs.jsonld#preferences-v1"
+      },
+      "skos:prefLabel": {
+        "@value": "Save and manage your bookmarked apps.",
+        "@language": "en"
+      }
+    }
+  ]
+}

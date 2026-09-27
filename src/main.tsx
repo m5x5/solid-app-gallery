@@ -4,10 +4,13 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import App, { routes } from "./App";
 import { SolidProvider } from "@/lib/solid-context";
 import { BookmarksProvider } from "@/lib/bookmarks";
+import { InboxProvider } from "@/lib/inbox";
 import { DeviceProvider } from "@/lib/device-context";
+import { ShapeLangProvider } from "@/lib/shape-lang-context";
 import { initCatalog } from "@/lib/apps";
 import { solidFetch } from "@/lib/solid-auth";
 import { initVirtualKeyboard } from "@/lib/virtual-keyboard";
+import { RootErrorBoundary, RouteErrorBoundary } from "@/components/ErrorBoundary";
 import "./index.css";
 
 initVirtualKeyboard();
@@ -54,14 +57,22 @@ initCatalog()
     const router = createBrowserRouter([
       {
         element: (
-          <SolidProvider>
-            <BookmarksProvider>
-              <DeviceProvider>
-                <App />
-              </DeviceProvider>
-            </BookmarksProvider>
-          </SolidProvider>
+          <RootErrorBoundary>
+            <SolidProvider>
+              <BookmarksProvider>
+                <InboxProvider>
+                  <DeviceProvider>
+                    <ShapeLangProvider>
+                      <App />
+                    </ShapeLangProvider>
+                  </DeviceProvider>
+                </InboxProvider>
+              </BookmarksProvider>
+            </SolidProvider>
+          </RootErrorBoundary>
         ),
+        // Unknown URLs and anything thrown outside React rendering.
+        errorElement: <RouteErrorBoundary />,
         children: routes,
       },
     ]);

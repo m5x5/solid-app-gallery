@@ -1,0 +1,44 @@
+@prefix acl: <http://www.w3.org/ns/auth/acl#> .
+@prefix interop: <http://www.w3.org/ns/solid/interop#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix st: <http://www.w3.org/ns/shapetrees#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@base <https://solid-app-gallery.mpeters.dev/sai/access-needs.ttl> .
+
+<#gallery-contributions-v1> a interop:AccessNeedGroup ;
+  interop:accessNecessity interop:AccessRequired ;
+  interop:accessScenario interop:PersonalAccess ;
+  interop:authenticatesAs interop:SocialAgent ;
+  interop:hasAccessDescriptionSet <#descriptions-en-v1> ;
+  interop:hasAccessNeed <#application-submissions-v1> .
+
+<#application-submissions-v1> a interop:AccessNeed ;
+  interop:registeredShapeTree <#application-submission-tree-v1> ;
+  interop:accessNecessity interop:AccessRequired ;
+  interop:accessMode acl:Read, acl:Create, acl:Update, acl:Delete .
+
+<#application-submission-tree-v1> a st:ShapeTree ;
+  st:expectsType st:Resource .
+
+<#descriptions-en-v1> a interop:AccessDescriptionSet ;
+  interop:usesLanguage "en"^^xsd:language .
+
+<#shape-descriptions-en-v1>
+  st:usesLanguage "en"^^xsd:language .
+
+<#application-submission-tree-description-en-v1>
+  st:inDescriptionSet <#shape-descriptions-en-v1> ;
+  st:describes <#application-submission-tree-v1> ;
+  skos:prefLabel "Solid App Gallery workspace"@en ;
+  skos:definition "A dedicated container for your app submissions, contributed screenshots, private comments, and bookmarks."@en .
+
+<#group-description-en-v1> a interop:AccessNeedGroupDescription ;
+  interop:inAccessDescriptionSet <#descriptions-en-v1> ;
+  interop:hasAccessNeedGroup <#gallery-contributions-v1> ;
+  skos:prefLabel "Contribute to Solid App Gallery"@en ;
+  skos:definition "Allow Solid App Gallery to save app submissions and, optionally, screenshots, comments, and bookmarks in your Solid data."@en .
+
+<#application-submissions-description-en-v1> a interop:AccessNeedDescription ;
+  interop:inAccessDescriptionSet <#descriptions-en-v1> ;
+  interop:hasAccessNeed <#application-submissions-v1> ;
+  skos:prefLabel "Store only the gallery data you create: submissions, screenshots, private comments, and bookmarks."@en .

@@ -10,6 +10,7 @@ import {
 } from "@inrupt/solid-client";
 import { Parser, Store, Writer, DataFactory } from "n3";
 import { solidFetch } from "./solid-auth";
+import { galleryStorageRoot } from "./sai-storage";
 import { getProfileInfo } from "./avatars";
 import {
   ADMIN_POD,
@@ -28,28 +29,33 @@ const CON = "https://solidproject.solidcommunity.net/catalog/taxonomy#";
 
 // Screen-pattern tags a screenshot can be assigned to. A single image may
 // belong to multiple flows (e.g. a combined login/signup screen).
-export const PATTERN_TAGS = ["Login", "Onboarding", "Dashboard", "Profile", "Signup"];
+// "Highlight" is not a screen pattern but a curation marker: the frames a
+// discover card shows (see cardFrames in lib/apps). It rides the same
+// schema:keywords mechanism so the existing flow editors can set it.
+export const HIGHLIGHT_TAG = "Highlight";
+export const SCREEN_PATTERN_TAGS = ["Login", "Onboarding", "Dashboard", "Profile", "Signup"];
+export const PATTERN_TAGS = [...SCREEN_PATTERN_TAGS, HIGHLIGHT_TAG];
 
 // Derive the pod storage root from a CSS-style WebID.
 // e.g. https://host:3100/alice/profile/card#me -> https://host:3100/alice/
 export function podRootFromWebId(webId: string): string {
   const u = new URL(webId);
-  const seg = u.pathname.split("/").filter(Boolean)[0] || "";
-  return `${u.origin}/${seg}/`;
+  const seg = u.pathname.split("/").filter(Boolean)[0];
+  return seg ? `${u.origin}/${seg}/` : `${u.origin}/`;
 }
 
 export function appSlug(appId: string): string {
   return appId.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 }
 
-function galleryRoot(webId: string) {
-  return `${podRootFromWebId(webId)}solid-gallery/`;
+function galleryRoot(webId: string): Promise<string> {
+  return galleryStorageRoot(webId, podRootFromWebId(webId));
 }
-function screensContainer(webId: string, appId: string) {
-  return `${galleryRoot(webId)}screens/${appSlug(appId)}/`;
+async function screensContainer(webId: string, appId: string) {
+  return `${await galleryRoot(webId)}screens/${appSlug(appId)}/`;
 }
 
-async function ensureContainer(url: string) {
+export async function ensureContainer(url: string) {
   try {
     await getSolidDataset(url, { fetch: solidFetch });
   } catch {
@@ -82,7 +88,7 @@ async function ensurePublicRead(containerUrl: string, ownerWebId: string) {
 // POST an ActivityStreams notification to the admin inbox. The inbox grants
 // AuthenticatedAgent acl:Append, so we POST directly — never GET/create it
 // first (that would 403 for non-admins and silently drop the notification).
-async function postToInbox(body: Record<string, unknown>): Promise<boolean> {
+export async function postToInbox(body: Record<string, unknown>): Promise<boolean> {
   try {
     const res = await solidFetch(ADMIN_INBOX, {
       method: "POST",
@@ -92,6 +98,29 @@ async function postToInbox(body: Record<string, unknown>): Promise<boolean> {
     return res.ok;
   } catch {
     return false; // notification is best-effort
+  }
+}
+
+// Thrown when the signed-in agent may not read the admin inbox, so the review
+// queue can say so instead of rendering as if it were empty.
+export class InboxAccessError extends Error {
+  constructor(readonly status: number) {
+    super(`Not allowed to read the admin inbox (${status})`);
+    this.name = "InboxAccessError";
+  }
+}
+
+// Notification URLs in the admin inbox. A missing inbox is just empty; a
+// 401/403 becomes InboxAccessError and anything else propagates as-is.
+async function listInboxUrls(): Promise<string[]> {
+  try {
+    const ds = await getSolidDataset(ADMIN_INBOX, { fetch: solidFetch });
+    return getContainedResourceUrlAll(ds).filter((u) => !u.endsWith("/"));
+  } catch (err) {
+    const status = (err as { statusCode?: number }).statusCode;
+    if (status === 404) return [];
+    if (status === 401 || status === 403) throw new InboxAccessError(status);
+    throw err;
   }
 }
 
@@ -154,18 +183,20 @@ export type Comment = {
   created: string;
   // "version": a system note in the thread that the screenshot was replaced
   // (motivation "editing"), rendered as a divider rather than a bubble.
-  kind?: "comment" | "version";
+  // "issue": a note that a GitHub issue was opened for this thread; `text` is
+  // the issue URL (motivation "linking").
+  kind?: "comment" | "version" | "issue";
 };
 
 // Each comment is a W3C Web Annotation (oa:Annotation) stored as its own JSON-LD
 // LDP resource inside a per-screen container — back-linked to the screen via
 // oa:hasTarget. Public ones live in the admin pod (world-readable); private ones
 // in the author's pod. One-resource-per-comment avoids read-modify-write races.
-function commentKey(screenId: string): string {
+export function commentKey(screenId: string): string {
   return screenId.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 }
-function privateCommentsDir(webId: string, screenId: string) {
-  return `${galleryRoot(webId)}private-comments/${commentKey(screenId)}/`;
+async function privateCommentsDir(webId: string, screenId: string) {
+  return `${await galleryRoot(webId)}private-comments/${commentKey(screenId)}/`;
 }
 function publicCommentsDir(screenId: string) {
   return `${ADMIN_PUBLIC_COMMENTS}${commentKey(screenId)}/`;
@@ -183,7 +214,7 @@ function toAnnotationJsonLd(c: Comment) {
   return {
     "@context": ANNO_CONTEXT,
     type: "Annotation",
-    motivation: c.kind === "version" ? "editing" : "commenting",
+    motivation: c.kind === "version" ? "editing" : c.kind === "issue" ? "linking" : "commenting",
     target: c.screenId,
     body: { type: "TextualBody", value: c.text, format: "text/plain" },
     creator: { id: c.author, name: c.authorLabel },
@@ -210,7 +241,7 @@ function fromAnnotation(json: any, url: string): Comment | null {
       "Someone",
     visibility: /Public/i.test(audience) ? "public" : "private",
     created: json.created || new Date(0).toISOString(),
-    kind: json.motivation === "editing" ? "version" : "comment",
+    kind: json.motivation === "editing" ? "version" : json.motivation === "linking" ? "issue" : "comment",
   };
 }
 
@@ -261,12 +292,44 @@ export async function loadComments(
 ): Promise<Comment[]> {
   const publicC = await readAnnotationsIn(publicCommentsDir(screenId), !!webId);
   const privateC = webId
-    ? await readAnnotationsIn(privateCommentsDir(webId, screenId), true)
+    ? await readAnnotationsIn(await privateCommentsDir(webId, screenId), true)
     : [];
   const seen = new Set<string>();
   return [...publicC, ...privateC]
     .filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
     .sort((a, b) => a.created.localeCompare(b.created));
+}
+
+// Public comment count per screen, keyed by commentKey(screenId). Version
+// markers remain visible in the thread, but are system notes rather than
+// comments and should not inflate the screenshot's comment badge.
+export async function loadPublicCommentCounts(): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  try {
+    const ds = await getSolidDataset(ADMIN_PUBLIC_COMMENTS);
+    const dirs = getContainedResourceUrlAll(ds).filter((u) => u.endsWith("/"));
+    await Promise.all(
+      dirs.map(async (d) => {
+        try {
+          const urls = getContainedResourceUrlAll(await getSolidDataset(d)).filter((u) => !u.endsWith("/"));
+          const annotations = await Promise.all(
+            urls.map(async (url) => {
+              try {
+                const res = await fetch(url, { headers: { Accept: "application/ld+json" } });
+                return res.ok ? await res.json() : null;
+              } catch {
+                return null;
+              }
+            })
+          );
+          const n = annotations.filter((annotation) => annotation && annotation.motivation !== "editing").length;
+          const key = d.slice(ADMIN_PUBLIC_COMMENTS.length).replace(/\/$/, "");
+          if (n) counts.set(key, n);
+        } catch {}
+      })
+    );
+  } catch {}
+  return counts;
 }
 
 // All public comments a WebID wrote, across every screen — for the profile
@@ -287,6 +350,27 @@ export async function loadPublicCommentsBy(webId: string): Promise<Comment[]> {
     .flat()
     .filter((c) => c.author === webId && c.visibility === "public")
     .sort((a, b) => b.created.localeCompare(a.created));
+}
+
+// Every public comment resource (all screens), without reading any of them —
+// the inbox opens only the ones it hasn't seen before (see readComment).
+export async function listPublicCommentUrls(): Promise<string[]> {
+  const ds = await getSolidDataset(ADMIN_PUBLIC_COMMENTS);
+  const dirs = getContainedResourceUrlAll(ds).filter((u) => u.endsWith("/"));
+  const files = await Promise.all(
+    dirs.map((d) =>
+      getSolidDataset(d)
+        .then((x) => getContainedResourceUrlAll(x).filter((u) => !u.endsWith("/")))
+        .catch(() => [] as string[])
+    )
+  );
+  return files.flat();
+}
+
+export async function readComment(url: string): Promise<Comment | null> {
+  const res = await fetch(url, { headers: { Accept: "application/ld+json" } });
+  if (!res.ok) return null;
+  return fromAnnotation(await res.json(), url);
 }
 
 // Post the "new version uploaded" marker into a screen's public thread so
@@ -318,7 +402,7 @@ export async function addComment(
   screenId: string,
   text: string,
   visibility: "public" | "private",
-  kind: "comment" | "version" = "comment"
+  kind: "comment" | "version" | "issue" = "comment"
 ): Promise<Comment> {
   const comment: Comment = {
     id: "",
@@ -330,11 +414,12 @@ export async function addComment(
     created: new Date().toISOString(),
     kind,
   };
-  await ensureContainer(galleryRoot(webId));
+  const root = await galleryRoot(webId);
+  await ensureContainer(root);
   const dir =
     visibility === "public"
       ? publicCommentsDir(screenId)
-      : privateCommentsDir(webId, screenId);
+      : await privateCommentsDir(webId, screenId);
   await ensureContainer(dir);
   // POST creates a new contained resource (its URL becomes the comment id).
   const res = await solidFetch(dir, {
@@ -351,14 +436,14 @@ export async function addComment(
 }
 
 // --- Bookmarks (stored as JSON in the user's pod) ---
-function bookmarksUrl(webId: string) {
-  return `${galleryRoot(webId)}bookmarks.json`;
+async function bookmarksUrl(webId: string) {
+  return `${await galleryRoot(webId)}bookmarks.json`;
 }
 
 // Load the user's bookmarked app ids from their pod (empty if none/unreadable).
 export async function loadBookmarks(webId: string): Promise<string[]> {
   try {
-    const res = await solidFetch(bookmarksUrl(webId), {
+    const res = await solidFetch(await bookmarksUrl(webId), {
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return [];
@@ -374,8 +459,8 @@ export async function saveBookmarks(
   webId: string,
   ids: string[]
 ): Promise<void> {
-  await ensureContainer(galleryRoot(webId));
-  const res = await solidFetch(bookmarksUrl(webId), {
+  await ensureContainer(await galleryRoot(webId));
+  const res = await solidFetch(await bookmarksUrl(webId), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ bookmarks: ids, modified: new Date().toISOString() }),
@@ -395,8 +480,8 @@ export async function uploadScreenshot(
   filename: string,
   tags: string[] = []
 ): Promise<string> {
-  await ensureContainer(galleryRoot(webId));
-  const container = screensContainer(webId, appId);
+  await ensureContainer(await galleryRoot(webId));
+  const container = await screensContainer(webId, appId);
   await ensureContainer(container);
   // Screenshots are meant to be shared (and reviewed by the admin), so make the
   // container world-readable once.
@@ -431,7 +516,7 @@ export async function loadUploadTags(
   webId: string,
   appId: string
 ): Promise<Record<string, string[]>> {
-  const container = screensContainer(webId, appId);
+  const container = await screensContainer(webId, appId);
   try {
     const res = await solidFetch(container + TAGS_FILE);
     if (!res.ok) return {};
@@ -450,7 +535,7 @@ export async function setUploadTags(
   url: string,
   tags: string[]
 ): Promise<void> {
-  const container = screensContainer(webId, appId);
+  const container = await screensContainer(webId, appId);
   const map = await loadUploadTags(webId, appId);
   map[url] = tags.filter((t) => PATTERN_TAGS.includes(t));
   const res = await solidFetch(container + TAGS_FILE, {
@@ -467,7 +552,7 @@ export async function listScreenshots(
   webId: string,
   appId: string
 ): Promise<string[]> {
-  const container = screensContainer(webId, appId);
+  const container = await screensContainer(webId, appId);
   try {
     const ds = await getSolidDataset(container, { fetch: solidFetch });
     const files = getContainedResourceUrlAll(ds).filter(
@@ -501,7 +586,7 @@ export async function reorderUploads(
   appId: string,
   orderedUrls: string[]
 ): Promise<void> {
-  const container = screensContainer(webId, appId);
+  const container = await screensContainer(webId, appId);
   const names = orderedUrls.map((u) => u.split("/").pop());
   const res = await solidFetch(container + ORDER_FILE, {
     method: "PUT",
@@ -597,19 +682,23 @@ const FOAF = "http://xmlns.com/foaf/0.1/";
 // Turtle or JSON-LD — solid-client content-negotiates and parses either).
 export async function getProfile(
   webId: string
-): Promise<{ name?: string; avatar?: string }> {
+): Promise<{ name?: string; nameProperty?: string; avatar?: string; avatarProperty?: string }> {
   try {
     const dataset = await getSolidDataset(webId, { fetch: solidFetch });
     const me = getThing(dataset, webId);
     if (!me) return {};
     // vcard:fn is the properly formatted display name (e.g. "Michael Peters");
     // foaf:name is often just a lowercase handle, so it's only the fallback.
-    const name =
-      getStringNoLocale(me, `${VCARD}fn`) ||
-      getStringNoLocale(me, `${FOAF}name`) ||
-      undefined;
-    const avatar = getUrl(me, `${FOAF}img`) || getUrl(me, `${VCARD}hasPhoto`) || undefined;
-    return { name, avatar };
+    const vcardName = getStringNoLocale(me, `${VCARD}fn`);
+    const foafName = getStringNoLocale(me, `${FOAF}name`);
+    const foafImage = getUrl(me, `${FOAF}img`);
+    const vcardPhoto = getUrl(me, `${VCARD}hasPhoto`);
+    return {
+      name: vcardName || foafName || undefined,
+      nameProperty: vcardName ? "vcard:fn" : foafName ? "foaf:name" : undefined,
+      avatar: foafImage || vcardPhoto || undefined,
+      avatarProperty: foafImage ? "foaf:img" : vcardPhoto ? "vcard:hasPhoto" : undefined,
+    };
   } catch {
     return {};
   }
@@ -637,13 +726,7 @@ export async function requestModerator(actor: string, message: string): Promise<
 }
 export type ModeratorRequest = { id: string; actor: string; message: string; published: string };
 export async function loadModeratorInbox(): Promise<ModeratorRequest[]> {
-  let urls: string[] = [];
-  try {
-    const ds = await getSolidDataset(ADMIN_INBOX, { fetch: solidFetch });
-    urls = getContainedResourceUrlAll(ds).filter((u) => !u.endsWith("/"));
-  } catch {
-    return [];
-  }
+  const urls = await listInboxUrls();
   const out = await Promise.all(
     urls.map(async (u) => {
       try {
@@ -656,6 +739,47 @@ export async function loadModeratorInbox(): Promise<ModeratorRequest[]> {
     })
   );
   return (out.filter(Boolean) as ModeratorRequest[]).sort((a, b) => b.published.localeCompare(a.published));
+}
+
+// Moderators review the same inbox as the owner, so the inbox ACL must grant
+// the admins group Read (list/read notices) and Write (archive/dismiss them).
+// Only the owner can change it: run from the owner's review queue, it adds the
+// group rule to the existing ACL (keeping whatever else the server set up), or
+// writes a full one if the inbox only inherits. Best-effort and idempotent.
+export async function ensureInboxAdminAccess(): Promise<void> {
+  const aclUrl = `${ADMIN_INBOX}.acl`;
+  const groupRule =
+    `<#gallery-admins> a <http://www.w3.org/ns/auth/acl#Authorization>;\n` +
+    `  <http://www.w3.org/ns/auth/acl#agentGroup> <${ADMINS_GROUP}>;\n` +
+    `  <http://www.w3.org/ns/auth/acl#accessTo> <./>;\n` +
+    `  <http://www.w3.org/ns/auth/acl#default> <./>;\n` +
+    `  <http://www.w3.org/ns/auth/acl#mode> <http://www.w3.org/ns/auth/acl#Read>, <http://www.w3.org/ns/auth/acl#Write>.\n`;
+  try {
+    const res = await solidFetch(aclUrl);
+    let body: string;
+    if (res.ok) {
+      const current = await res.text();
+      if (current.includes(ADMINS_GROUP)) return;
+      body = `${current}\n${groupRule}`;
+    } else if (res.status === 404) {
+      body =
+        `@prefix acl: <http://www.w3.org/ns/auth/acl#>.\n` +
+        `<#owner> a acl:Authorization; acl:agent <${ADMIN_WEBID}>;\n` +
+        `  acl:accessTo <./>; acl:default <./>; acl:mode acl:Read, acl:Write, acl:Control.\n` +
+        `<#append> a acl:Authorization; acl:agentClass acl:AuthenticatedAgent;\n` +
+        `  acl:accessTo <./>; acl:mode acl:Append.\n` +
+        groupRule;
+    } else {
+      return; // not the owner — nothing we may change
+    }
+    await solidFetch(aclUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "text/turtle" },
+      body,
+    });
+  } catch {
+    /* best-effort: a server without WAC; the review queue reports the 403 */
+  }
 }
 
 export async function loadAdmins(): Promise<string[]> {
@@ -783,7 +907,10 @@ export async function publishScreenshotsToCatalog(
 
     const node = `<${appId}#screenshot-${n}>`;
     const valid = [...new Set((tags || []).filter((t) => PATTERN_TAGS.includes(t)))];
-    const patterns = valid.length ? valid : ["Dashboard"];
+    // Same rule as retagCatalogScreenshot: Highlight alone is not a pattern.
+    const patterns = valid.some((t) => SCREEN_PATTERN_TAGS.includes(t))
+      ? valid
+      : [...valid, "Dashboard"];
     const keywords = patterns.map((p) => `con:${p}Screen`).join(", ");
     const dims = await imageDimensions(blob);
     lines.push(`<${appId}> ex:screenshot ${node} .`);
@@ -942,7 +1069,11 @@ export async function retagCatalogScreenshot(
     );
   if (!nodes.length) return false;
   const valid = [...new Set(tags.filter((t) => PATTERN_TAGS.includes(t)))];
-  const patterns = valid.length ? valid : ["Dashboard"];
+  // Highlight is a marker, not a pattern — a frame carrying only it still needs
+  // a pattern so it keeps showing up in the flow/screen listings.
+  const patterns = valid.some((t) => SCREEN_PATTERN_TAGS.includes(t))
+    ? valid
+    : [...valid, "Dashboard"];
   const { namedNode } = DataFactory;
   for (const n of nodes) {
     store.removeQuads(store.getQuads(n, SCHEMA + "keywords", null, null));
@@ -964,15 +1095,10 @@ export type UploadNotice = {
 };
 
 // Read the admin inbox and return pending screenshot-upload announcements
-// (newest first). Admin-only — relies on owner read access to the inbox.
+// (newest first). Admin-only — the inbox ACL grants the owner and the admins
+// group Read (see ensureInboxAdminAccess).
 export async function loadUploadInbox(): Promise<UploadNotice[]> {
-  let urls: string[] = [];
-  try {
-    const ds = await getSolidDataset(ADMIN_INBOX, { fetch: solidFetch });
-    urls = getContainedResourceUrlAll(ds).filter((u) => !u.endsWith("/"));
-  } catch {
-    return [];
-  }
+  const urls = await listInboxUrls();
   const notices = await Promise.all(
     urls.map(async (u) => {
       try {
@@ -1000,8 +1126,130 @@ export async function loadUploadInbox(): Promise<UploadNotice[]> {
 }
 
 // Remove a processed notification from the inbox.
+// Drop a notification that has been acted on (published, approved) — it has
+// served its purpose and leaves no trace.
 export async function dismissNotice(noticeUrl: string): Promise<void> {
   await solidFetch(noticeUrl, { method: "DELETE" });
+}
+
+// --- Dismissed queue: what an admin waved away, kept so it can be revisited ---
+// "Dismiss" used to DELETE the notification outright, which made a mis-click
+// unrecoverable and hid the fact that a contribution was ever made. The notice
+// now moves to a private archive container instead.
+const DISMISSED_DIR = `${GALLERY_ROOT}dismissed/`;
+
+// Owner keeps control, the admins group can read and restore; nobody else,
+// since these notices carry contributor WebIDs and unpublished app details.
+async function ensureAdminsOnly(containerUrl: string) {
+  const acl =
+    `@prefix acl: <http://www.w3.org/ns/auth/acl#>.\n` +
+    `<#owner> a acl:Authorization; acl:agent <${ADMIN_WEBID}>;\n` +
+    `  acl:accessTo <./>; acl:default <./>; acl:mode acl:Read, acl:Write, acl:Control.\n` +
+    `<#admins> a acl:Authorization; acl:agentGroup <${ADMINS_GROUP}>;\n` +
+    `  acl:accessTo <./>; acl:default <./>; acl:mode acl:Read, acl:Write.\n`;
+  try {
+    await solidFetch(`${containerUrl}.acl`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/turtle" },
+      body: acl,
+    });
+  } catch {
+    /* best-effort: a server without WAC, or an ACL already in place */
+  }
+}
+
+// Move a notification out of the inbox only after its archive copy is saved.
+// Let failures reach the review UI so the original stays available for retry.
+export async function archiveNotice(noticeUrl: string, by?: string): Promise<void> {
+  const res = await solidFetch(noticeUrl);
+  if (!res.ok) throw new Error(`Could not read the notice (${res.status})`);
+  const body = await res.json();
+  await ensureContainer(DISMISSED_DIR);
+  await ensureAdminsOnly(DISMISSED_DIR);
+  const archived = await solidFetch(DISMISSED_DIR, {
+    method: "POST",
+    headers: { "Content-Type": "application/ld+json" },
+    body: JSON.stringify({
+      ...body,
+      dismissedAt: new Date().toISOString(),
+      ...(by ? { dismissedBy: by } : {}),
+      archivedFrom: noticeUrl,
+    }),
+  });
+  if (!archived.ok) throw new Error(`Could not archive the notice (${archived.status})`);
+
+  const deleted = await solidFetch(noticeUrl, { method: "DELETE" });
+  if (!deleted.ok && deleted.status !== 404) {
+    throw new Error(`Notice archived, but removing it from the inbox failed (${deleted.status})`);
+  }
+}
+
+export type DismissedNotice = {
+  id: string; // the archived resource URL
+  type: string; // Announce / Update / Flag / Offer …
+  summary: string;
+  actor: string;
+  published: string;
+  dismissedAt: string;
+  dismissedBy?: string;
+  // Enough to describe the item in a list without re-deriving every shape.
+  appId?: string;
+  appName?: string;
+  imageUrl?: string;
+  content?: string;
+};
+
+export async function loadDismissedNotices(): Promise<DismissedNotice[]> {
+  let urls: string[] = [];
+  try {
+    const ds = await getSolidDataset(DISMISSED_DIR, { fetch: solidFetch });
+    urls = getContainedResourceUrlAll(ds).filter((u) => !u.endsWith("/"));
+  } catch {
+    return []; // nothing dismissed yet, or no access
+  }
+  const items = await Promise.all(
+    urls.map(async (u) => {
+      try {
+        const n = await (await solidFetch(u)).json();
+        const obj = n.object || {};
+        return {
+          id: u,
+          type: n.type || "",
+          summary: n.summary || "",
+          actor: n.actor || "",
+          published: n.published || "",
+          dismissedAt: n.dismissedAt || "",
+          dismissedBy: n.dismissedBy,
+          appId: typeof n.target === "string" ? n.target : obj.id || n.object,
+          appName: obj.name,
+          imageUrl: typeof obj.id === "string" && /^https?:/.test(obj.id) ? obj.id : undefined,
+          content: n.content,
+        } as DismissedNotice;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return (items.filter(Boolean) as DismissedNotice[]).sort((a, b) =>
+    (b.dismissedAt || "").localeCompare(a.dismissedAt || "")
+  );
+}
+
+// Put a dismissed notice back into the review queue.
+export async function restoreNotice(archiveUrl: string): Promise<void> {
+  const res = await solidFetch(archiveUrl);
+  if (!res.ok) throw new Error(`Could not read the archived notice (${res.status})`);
+  const { dismissedAt, dismissedBy, archivedFrom, ...original } = await res.json();
+  void dismissedAt;
+  void dismissedBy;
+  void archivedFrom;
+  const posted = await solidFetch(ADMIN_INBOX, {
+    method: "POST",
+    headers: { "Content-Type": "application/ld+json" },
+    body: JSON.stringify(original),
+  });
+  if (!posted.ok) throw new Error(`Restoring failed: ${posted.status} ${posted.statusText}`);
+  await solidFetch(archiveUrl, { method: "DELETE" }).catch(() => {});
 }
 
 export type AppSubmission = {
@@ -1075,8 +1323,9 @@ export async function submitApp(
   const ttl = submissionTurtle(sub);
   const date = new Date().toISOString().slice(0, 10);
   const fileName = `${date}-${sub.name.replace(/\s+/g, "_")}.ttl`;
-  const submissions = `${galleryRoot(webId)}submissions/`;
-  await ensureContainer(galleryRoot(webId));
+  const root = await galleryRoot(webId);
+  const submissions = `${root}submissions/`;
+  await ensureContainer(root);
   await ensureContainer(submissions);
   const url = submissions + encodeURIComponent(fileName);
   const res = await solidFetch(url, {
@@ -1108,6 +1357,27 @@ export async function updateMySubmission(
   await notifyAdminSubmission(webId, sub, url, true);
 }
 
+// Withdraw a submission that is still in review: drop the .ttl from the
+// submitter's own pod and tell the admin, so the review queue can retire the
+// matching entry instead of publishing something the submitter took back.
+export async function withdrawMySubmission(
+  url: string,
+  webId: string,
+  name: string
+): Promise<void> {
+  const res = await solidFetch(url, { method: "DELETE" });
+  if (!res.ok && res.status !== 404)
+    throw new Error(`Withdraw failed: ${res.status} ${res.statusText}`);
+  await postToInbox({
+    "@context": "https://www.w3.org/ns/activitystreams",
+    type: "Undo",
+    summary: "Withdrawn app submission",
+    actor: webId,
+    object: { name, submissionUrl: url },
+    published: new Date().toISOString(),
+  });
+}
+
 // --- The signed-in user's own submissions (their pod, not the review queue) ---
 export type MySubmission = {
   url: string; // the .ttl in the user's pod
@@ -1119,7 +1389,7 @@ export type MySubmission = {
 // lives in the admin's inbox and is not readable by a normal user, so this is
 // the submitter's own record of what they sent.
 export async function listMySubmissions(webId: string): Promise<MySubmission[]> {
-  const container = `${galleryRoot(webId)}submissions/`;
+  const container = `${await galleryRoot(webId)}submissions/`;
   let urls: string[] = [];
   try {
     const ds = await getSolidDataset(container, { fetch: solidFetch });
@@ -1196,13 +1466,7 @@ export type DeletionNotice = {
 };
 
 export async function loadDeletionInbox(): Promise<DeletionNotice[]> {
-  let urls: string[] = [];
-  try {
-    const ds = await getSolidDataset(ADMIN_INBOX, { fetch: solidFetch });
-    urls = getContainedResourceUrlAll(ds).filter((u) => !u.endsWith("/"));
-  } catch {
-    return [];
-  }
+  const urls = await listInboxUrls();
   const notices = await Promise.all(
     urls.map(async (u) => {
       try {
@@ -1281,17 +1545,19 @@ export type SubmissionNotice = {
 // (newest first). The submission fields are embedded in the notification
 // itself, so this never needs to read the submitter's own pod.
 export async function loadSubmissionInbox(): Promise<SubmissionNotice[]> {
-  let urls: string[] = [];
-  try {
-    const ds = await getSolidDataset(ADMIN_INBOX, { fetch: solidFetch });
-    urls = getContainedResourceUrlAll(ds).filter((u) => !u.endsWith("/"));
-  } catch {
-    return [];
-  }
+  const urls = await listInboxUrls();
+  // Submissions the submitter has since withdrawn — their notices stay in the
+  // inbox, so drop the matching entries rather than offering them for review.
+  const withdrawn = new Set<string>();
   const notices = await Promise.all(
     urls.map(async (u) => {
       try {
         const n = await (await solidFetch(u)).json();
+        if (n?.type === "Undo" && /withdrawn app submission/i.test(n?.summary || "")) {
+          const w = n.object?.submissionUrl;
+          if (w) withdrawn.add(w);
+          return null;
+        }
         const isUpdate = n?.type === "Update";
         if (
           (n?.type !== "Announce" && !isUpdate) ||
@@ -1325,6 +1591,7 @@ export async function loadSubmissionInbox(): Promise<SubmissionNotice[]> {
   );
   return notices
     .filter((n): n is SubmissionNotice => !!n)
+    .filter((n) => !n.submissionUrl || !withdrawn.has(n.submissionUrl))
     .sort((a, b) => b.published.localeCompare(a.published));
 }
 
@@ -1354,6 +1621,62 @@ async function agentRecordTurtle(webId: string, existingTtl: string): Promise<st
     return "";
   const name = await agentName(webId);
   return `<${webId}> a ex:Person${name ? ` ;\n  ex:name "${ttlEscape(name)}"` : ""} .\n`;
+}
+
+// Admin: edit a published record's descriptive fields in place. Only the
+// predicates named in `fields` are touched — screenshots, authors, provenance
+// and anything else hanging off the record are left alone (unlike a republish,
+// which rewrites the whole node). An empty string clears an optional field.
+export type AppRecordFields = {
+  name?: string;
+  description?: string;
+  subType?: string; // taxonomy key, e.g. "PersonalProductivityApp"
+  status?: string; // taxonomy key, e.g. "Production"
+  technicalKeyword?: string;
+  programmingLanguage?: string;
+  socialKeyword?: string;
+  landingPage?: string;
+  repository?: string;
+};
+
+export async function updateAppRecord(
+  appId: string,
+  fields: AppRecordFields
+): Promise<void> {
+  const ttl = await (await solidFetch(CATALOG_URL)).text();
+  const store = new Store(new Parser().parse(ttl));
+  if (!store.getQuads(appId, null, null, null).length)
+    throw new Error("App not found in catalog");
+
+  const { namedNode, literal } = DataFactory;
+  const S = namedNode(appId);
+  // Literals, IRIs of their own, and taxonomy concepts each need a different
+  // object — the predicate list says which is which.
+  const LITERALS = ["name", "description", "technicalKeyword", "programmingLanguage", "socialKeyword"];
+  const IRIS = ["landingPage", "repository"];
+  const CONCEPTS = ["subType", "status"];
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined) continue;
+    const pred = EX + key;
+    store.removeQuads(store.getQuads(appId, pred, null, null));
+    const v = value.trim();
+    if (!v) continue; // cleared
+    if (LITERALS.includes(key)) store.addQuad(S, namedNode(pred), literal(v));
+    else if (IRIS.includes(key)) store.addQuad(S, namedNode(pred), namedNode(v));
+    else if (CONCEPTS.includes(key)) store.addQuad(S, namedNode(pred), namedNode(CON + v));
+  }
+  // A record without a name would vanish from the catalog on the next load.
+  if (!store.getObjects(appId, EX + "name", null).length)
+    throw new Error("An app needs a name");
+
+  store.removeQuads(store.getQuads(appId, EX + "modified", null, null));
+  store.addQuad(
+    S,
+    namedNode(EX + "modified"),
+    literal(new Date().toISOString(), namedNode("http://www.w3.org/2001/XMLSchema#dateTime"))
+  );
+  await writeCatalogStore(store);
 }
 
 // Admin: attach an author/maintainer (by WebID) to an existing catalog record.

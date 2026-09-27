@@ -4,16 +4,28 @@ import {
   type SessionStateChangeDetail,
 } from "@uvdsl/solid-oidc-client-browser";
 // Self-contained refresh worker shipped by the library; Vite serves it as a URL.
+// Patched (see patches/@uvdsl+solid-oidc-client-browser+*.patch) to fall back to
+// a plain Worker via @okikio/sharedworker on browsers without SharedWorker
+// (Android Chrome/Firefox, iOS) instead of throwing.
 import workerUrl from "@uvdsl/solid-oidc-client-browser/RefreshWorker?url";
+import { resolveLoginTarget } from "./oidc-issuer";
 
 // Default Identity Provider — the user's test Community Solid Server pod.
 export const DEFAULT_IDP = "https://pod.mpeters.dev/";
+export const CLIENT_ID = "https://solid-app-gallery.mpeters.dev/id.jsonld";
 
 export type SolidSession = { isLoggedIn: boolean; webId?: string };
 
 const REDIRECT_URI = window.location.origin + "/";
+const STATIC_CLIENT_ORIGINS = new Set([
+  "https://solid-app-gallery.mpeters.dev",
+  "http://localhost:5180",
+]);
+const USE_STATIC_CLIENT_ID = STATIC_CLIENT_ORIGINS.has(window.location.origin);
+const CLIENT_MODE_KEY = "solid-gallery.oidc-client-mode";
 
 let session: Session | null = null;
+let sessionUsesStaticClientId: boolean | null = null;
 let ready: Promise<void> | null = null;
 const listeners = new Set<(s: SolidSession) => void>();
 
@@ -33,13 +45,41 @@ export function onSessionChange(cb: (s: SolidSession) => void) {
   };
 }
 
-function getSession(): Session {
+function storedStaticClientMode(): boolean {
+  try {
+    return window.sessionStorage.getItem(CLIENT_MODE_KEY) === "sai";
+  } catch {
+    return false;
+  }
+}
+
+function saveStaticClientMode(useStaticClientId: boolean) {
+  try {
+    window.sessionStorage.setItem(CLIENT_MODE_KEY, useStaticClientId ? "sai" : "dynamic");
+  } catch {
+    // The OIDC session still works when storage is unavailable; this only
+    // selects the matching configuration after the redirect.
+  }
+}
+
+function clearStaticClientMode() {
+  try {
+    window.sessionStorage.removeItem(CLIENT_MODE_KEY);
+  } catch {
+    // Ignore private-mode storage failures.
+  }
+}
+
+function getSession(useStaticClientId = sessionUsesStaticClientId ?? storedStaticClientMode()): Session {
   if (session) return session;
+  sessionUsesStaticClientId = useStaticClientId;
   session = new Session(
-    {
-      redirect_uris: [REDIRECT_URI],
-      client_name: "Solid App Gallery",
-    },
+    useStaticClientId
+      ? { client_id: CLIENT_ID }
+      : {
+          redirect_uris: [REDIRECT_URI],
+          client_name: "Solid App Gallery",
+        },
     { workerUrl }
   );
   session.addEventListener(SessionEvents.STATE_CHANGE, (e: Event) => {
@@ -73,11 +113,27 @@ export function restoreSession(): Promise<SolidSession> {
 }
 
 export async function startLogin(oidcIssuer: string = DEFAULT_IDP) {
-  await getSession().login(oidcIssuer, REDIRECT_URI);
+  const target = await resolveLoginTarget(oidcIssuer);
+  // CSS and other standard Solid servers keep their working dynamic client
+  // registration. A WebID that advertises an SAI authorization agent instead
+  // uses the stable client document required to resolve its access needs.
+  const useStaticClientId = USE_STATIC_CLIENT_ID && target.isSai;
+  if (session && sessionUsesStaticClientId !== useStaticClientId) {
+    session = null;
+    sessionUsesStaticClientId = null;
+    ready = null;
+  }
+  saveStaticClientMode(useStaticClientId);
+  await getSession(useStaticClientId).login(target.issuer, REDIRECT_URI);
 }
 
 export async function endLogin() {
+  if (!session) {
+    clearStaticClientMode();
+    return;
+  }
   await getSession().logout();
+  clearStaticClientMode();
   emit();
 }
 

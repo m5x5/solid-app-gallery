@@ -14,6 +14,7 @@ function vercelApiDev(): Plugin {
     "/api/robots": "./api/robots.ts",
     "/robots.txt": "./api/robots.ts",
     "/api/shapes-gallery": "./api/shapes-gallery.ts",
+    "/api/app-shapes": "./api/app-shapes.ts",
     "/shapes/gallery-shacl": "./api/shapes-gallery.ts",
   };
   return {
@@ -27,7 +28,11 @@ function vercelApiDev(): Plugin {
         try {
           const mod = await server.ssrLoadModule(path.resolve(__dirname, file));
           const url = `http://${req.headers.host}${req.url}`;
-          const out: Response = await mod.default(new Request(url, { method: req.method }));
+          const headers = new Headers();
+          for (const [name, value] of Object.entries(req.headers)) {
+            if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+          }
+          const out: Response = await mod.default(new Request(url, { method: req.method, headers }));
           res.statusCode = out.status;
           out.headers.forEach((v, k) => res.setHeader(k, v));
           res.end(Buffer.from(await out.arrayBuffer()));
