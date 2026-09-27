@@ -37,7 +37,7 @@
     [ sh:path schema:height        ; sh:datatype xsd:integer ; sh:maxCount 1 ] ,
     [ sh:path schema:caption       ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
     [ sh:path schema:keywords      ; sh:nodeKind sh:IRI ;
-      sh:description "Screen-pattern as a SKOS concept (con:LoginScreen, …)." ] ,
+      sh:description "Screen-pattern as a SKOS concept (con:LoginScreen, …), or con:HighlightScreen marking a screen the gallery card features." ] ,
     [ sh:path dcterms:created      ; sh:datatype xsd:dateTime ; sh:maxCount 1 ] ,
     [ sh:path dcterms:creator      ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] .
 
@@ -69,8 +69,64 @@
   sh:targetClass oa:Annotation ;
   sh:property
     [ sh:path oa:motivatedBy  ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
-    [ sh:path oa:hasTarget    ; sh:nodeKind sh:IRI ; sh:minCount 1 ] ,
+    [ sh:path oa:hasTarget    ; sh:minCount 1 ] ,
     [ sh:path oa:hasBody      ; sh:minCount 1 ] ,
     [ sh:path as:attributedTo ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
     [ sh:path as:audience     ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
     [ sh:path dcterms:created ; sh:datatype xsd:dateTime ; sh:maxCount 1 ] .
+
+# --- data regions: a box on a screenshot naming the vocabulary term the app
+# shows (oa:describing) or lets the user edit (oa:editing) there. The
+# target is a SpecificResource on the screenshot with a media-fragment
+# selector in percent; the body a SpecificResource whose source is the term.
+# An app's data shape is derived from the set of these (lib/shapes).
+:DataRegionShape a sh:NodeShape ;
+  sh:targetClass oa:Annotation ;
+  # Data regions and comments are both oa:Annotations. Ignore annotations with
+  # another motivation; describing/editing annotations must satisfy the full
+  # region contract below.
+  sh:or (
+    [ sh:not [
+        sh:property [
+          sh:path oa:motivatedBy ;
+          sh:in ( oa:describing oa:editing ) ;
+          sh:minCount 1
+        ]
+      ]
+    ]
+    [ sh:property
+        [ sh:path oa:motivatedBy ; sh:in ( oa:describing oa:editing ) ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path oa:hasTarget   ; sh:node :RegionTargetShape ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path oa:hasBody     ; sh:node :RegionBodyShape ; sh:minCount 1 ] ,
+        [ sh:path ( oa:hasBody :termKind ) ; sh:in ( "property" "class" ) ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path dcterms:creator ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
+        [ sh:path dcterms:created ; sh:datatype xsd:dateTime ; sh:maxCount 1 ]
+    ]
+  ) .
+
+:RegionTargetShape a sh:NodeShape ;
+  sh:property
+    [ sh:path oa:hasSource   ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ;
+      sh:description "The screenshot (schema:ImageObject contentUrl) the box was drawn on." ] ,
+    [ sh:path oa:hasScope    ; sh:nodeKind sh:IRI ; sh:maxCount 1 ;
+      sh:description "The ex:Software record the screen belongs to." ] ,
+    [ sh:path oa:hasSelector ; sh:node :RegionSelectorShape ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+:RegionSelectorShape a sh:NodeShape ;
+  sh:targetClass oa:FragmentSelector ;
+  sh:property
+    [ sh:path dcterms:conformsTo ; sh:hasValue <http://www.w3.org/TR/media-frags/> ] ,
+    [ sh:path rdf:value ; sh:datatype xsd:string ; sh:pattern "^xywh=percent:[0-9.]+,[0-9.]+,[0-9.]+,[0-9.]+$" ;
+      sh:minCount 1 ; sh:maxCount 1 ] .
+
+:RegionBodyShape a sh:NodeShape ;
+  sh:or (
+    [ sh:property [ sh:path oa:hasSource ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:description "The vocabulary term (property or class) shown in the box." ] ,
+      [ sh:path oa:hasPurpose ; sh:hasValue oa:identifying ] ,
+      [ sh:path :termKind ; sh:in ( "property" "class" ) ; sh:minCount 1 ; sh:maxCount 1 ] ]
+    [ sh:property [ sh:path rdf:value ; sh:datatype xsd:string ; sh:minCount 1 ] ,
+      [ sh:path oa:hasPurpose ; sh:hasValue oa:describing ] ]
+    [ sh:property [ sh:path oa:hasSource ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+      [ sh:path oa:hasPurpose ; sh:hasValue oa:classifying ] ]
+  ) .

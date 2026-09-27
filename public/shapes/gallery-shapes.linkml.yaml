@@ -14,6 +14,7 @@ prefixes:
   oa: http://www.w3.org/ns/oa#
   as: https://www.w3.org/ns/activitystreams#
   dcterms: http://purl.org/dc/terms/
+  rdf: http://www.w3.org/1999/02/22-rdf-syntax-ns#
 imports:
   - linkml:types
 
@@ -64,7 +65,8 @@ classes:
       keywords:
         range: uriorcurie
         slot_uri: schema:keywords
-        description: Screen-pattern as a SKOS concept (con:LoginScreen, …).
+        description: Screen-pattern as a SKOS concept (con:LoginScreen, …), or
+          con:HighlightScreen marking a screen the gallery card features.
       created:
         range: datetime
         slot_uri: dcterms:created
@@ -129,7 +131,7 @@ classes:
         range: uriorcurie
         slot_uri: oa:motivatedBy
       hasTarget:
-        range: uriorcurie
+        range: Any
         required: true
         slot_uri: oa:hasTarget
       hasBody:
@@ -145,3 +147,85 @@ classes:
       created:
         range: datetime
         slot_uri: dcterms:created
+
+  DataRegionShape:
+    class_uri: oa:Annotation
+    description: >-
+      A box on a screenshot naming the vocabulary term the app shows
+      (oa:describing) or lets the user edit (oa:editing) there. An app's data
+      shape is derived from the set of these.
+    attributes:
+      motivatedBy:
+        range: uriorcurie
+        required: true
+        slot_uri: oa:motivatedBy
+        comments: ["oa:describing or oa:editing"]
+      hasTarget:
+        range: RegionTargetShape
+        required: true
+        slot_uri: oa:hasTarget
+      hasBody:
+        range: RegionBodyShape
+        required: true
+        multivalued: true
+        slot_uri: oa:hasBody
+      creator:
+        range: uriorcurie
+        slot_uri: dcterms:creator
+      created:
+        range: datetime
+        slot_uri: dcterms:created
+
+  RegionTargetShape:
+    class_uri: oa:SpecificResource
+    attributes:
+      source:
+        range: uriorcurie
+        required: true
+        slot_uri: oa:hasSource
+        description: The screenshot (schema:ImageObject contentUrl) the box was drawn on.
+      scope:
+        range: uriorcurie
+        slot_uri: oa:hasScope
+        description: The ex:Software record the screen belongs to.
+      selector:
+        range: RegionSelectorShape
+        required: true
+        slot_uri: oa:hasSelector
+        description: oa:FragmentSelector conforming to media-frags, in percent of the image.
+
+  RegionSelectorShape:
+    class_uri: oa:FragmentSelector
+    attributes:
+      conformsTo:
+        range: uriorcurie
+        required: true
+        slot_uri: dcterms:conformsTo
+      value:
+        range: string
+        required: true
+        slot_uri: rdf:value
+        pattern: "^xywh=percent:[0-9.]+,[0-9.]+,[0-9.]+,[0-9.]+$"
+
+  RegionBodyShape:
+    description: >-
+      One of the region's identifying-term, published-shape, or textual-note
+      Web Annotation bodies. Purpose determines which fields apply.
+    attributes:
+      source:
+        range: uriorcurie
+        slot_uri: oa:hasSource
+        description: The vocabulary term or published shape named by this body.
+      value:
+        range: string
+        slot_uri: rdf:value
+        description: Text carried by an optional note body.
+      purpose:
+        range: uriorcurie
+        required: true
+        slot_uri: oa:hasPurpose
+        comments: ["oa:identifying | oa:classifying | oa:describing"]
+      termKind:
+        range: string
+        slot_uri: gs:termKind
+        comments: ["property | class"]
