@@ -1,8 +1,37 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "vite build",
+  "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "headers": [
+    {
+      "source": "/id.jsonld",
+      "headers": [
+        { "key": "Content-Type", "value": "application/ld+json" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/sai/access-needs.jsonld",
+      "headers": [
+        { "key": "Content-Type", "value": "application/ld+json" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/sai/access-needs.ttl",
+      "headers": [
+        { "key": "Content-Type", "value": "text/turtle" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/llms.txt",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain; charset=utf-8" }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/sitemap.xml",

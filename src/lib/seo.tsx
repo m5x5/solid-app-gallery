@@ -193,3 +193,128 @@ export function breadcrumbJsonLd(items: { name: string; url: string }[]) {
     })),
   };
 }
+
+// ---------- About page ----------
+
+// A page node (AboutPage/WebPage) tied into the site + organization graph, so
+// the About page is not an island in the structured data.
+export function webPageJsonLd(opts: {
+  url: string;
+  name: string;
+  description: string;
+  type?: "WebPage" | "AboutPage";
+}) {
+  const o = origin();
+  return {
+    "@type": opts.type || "WebPage",
+    "@id": opts.url,
+    url: opts.url,
+    name: opts.name,
+    description: opts.description,
+    isPartOf: { "@id": `${o}/#website` },
+    publisher: { "@id": `${o}/#org` },
+    inLanguage: "en",
+  };
+}
+
+// The people who run the gallery. Same @id as siteJsonLd()'s Organization, so
+// consumers merge the two nodes; each moderator is identified by their WebID.
+export function organizationJsonLd(
+  members: { webId: string; name?: string | null; isOwner?: boolean }[]
+) {
+  const o = origin();
+  return {
+    "@type": "Organization",
+    "@id": `${o}/#org`,
+    name: SITE_NAME,
+    url: `${o}/`,
+    description: DEFAULT_DESCRIPTION,
+    ...(members.length
+      ? {
+          member: members.map((m) => ({
+            "@type": "Person",
+            "@id": m.webId,
+            name: m.name || m.webId,
+            url: m.webId,
+            sameAs: [m.webId],
+            jobTitle: m.isOwner ? "Administrator" : "Moderator",
+          })),
+        }
+      : {}),
+  };
+}
+
+// The catalog itself as a Dataset — it is a public, machine-readable pod, so
+// say so in the markup: where it lives, in what format, and how big it is.
+export function catalogDatasetJsonLd(opts: {
+  pageUrl: string;
+  catalogUrl: string;
+  galleryRoot: string;
+  screensBase: string;
+  videosBase: string;
+  appCount: number;
+  screenCount: number;
+}) {
+  const o = origin();
+  return {
+    "@type": "Dataset",
+    "@id": `${opts.galleryRoot}#dataset`,
+    name: `${SITE_NAME} catalog`,
+    description:
+      "Apps and services in the Solid Gallery as RDF (Turtle) in a public Solid Pod, with their screenshots and videos. Readable with any Solid client or plain HTTP — no account required.",
+    url: opts.pageUrl,
+    sameAs: opts.catalogUrl,
+    creator: { "@id": `${o}/#org` },
+    publisher: { "@id": `${o}/#org` },
+    isAccessibleForFree: true,
+    encodingFormat: ["text/turtle", "image/png", "video/mp4"],
+    keywords: ["Solid", "Solid Pod", "RDF", "Linked Data", "apps", "screenshots"],
+    includedInDataCatalog: {
+      "@type": "DataCatalog",
+      "@id": `${opts.galleryRoot}#catalog`,
+      name: SITE_NAME,
+      url: opts.galleryRoot,
+    },
+    distribution: [
+      {
+        "@type": "DataDownload",
+        name: "catalog.ttl",
+        description: "App and service records as ex:Software Turtle.",
+        encodingFormat: "text/turtle",
+        contentUrl: opts.catalogUrl,
+      },
+      {
+        "@type": "DataDownload",
+        name: "Screenshots",
+        description: "Published screenshots, linked from the catalog as schema:ImageObject.",
+        encodingFormat: "image/png",
+        contentUrl: opts.screensBase,
+      },
+      {
+        "@type": "DataDownload",
+        name: "Videos",
+        description: "Screen recordings, linked from the catalog as schema:VideoObject.",
+        encodingFormat: "video/mp4",
+        contentUrl: opts.videosBase,
+      },
+    ],
+    variableMeasured: [
+      { "@type": "PropertyValue", name: "Apps & services", value: opts.appCount },
+      { "@type": "PropertyValue", name: "Screens", value: opts.screenCount },
+    ],
+  };
+}
+
+// FAQPage — answers must be plain text, so entries carry a text twin of the
+// JSX rendered on the page.
+export function faqJsonLd(items: { q: string; text: string }[], pageUrl: string) {
+  return {
+    "@type": "FAQPage",
+    "@id": `${pageUrl}#faq`,
+    mainEntity: items.map((i) => ({
+      "@type": "Question",
+      name: i.q,
+      acceptedAnswer: { "@type": "Answer", text: i.text },
+    })),
+  };
+}

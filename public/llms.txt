@@ -1,0 +1,39 @@
+# Solid App Gallery
+
+> A gallery for the Apps & Services region of the Solid Catalog - browse apps built on the [Solid protocol](https://solidproject.org), by looking at their screens, and their flows.
+
+The gallery has no database of its own: the catalog is RDF/Turtle (`catalog.ttl`) that lives in a [Solid pod](https://solidproject.org/about) and is fetched, parsed, and rendered entirely at runtime. Visitors can sign in with any Solid Identity Provider to submit a new app, upload screenshots, leave comments, bookmark apps, and mark RDF-backed data regions on screenshots. The catalog vocabulary is schema.org plus [Web Annotations](https://www.w3.org/TR/annotation-model/) for comments and data regions, formally described by the gallery's own SHACL and LinkML shapes.
+
+## Docs
+
+- [About](https://solid-app-gallery.mpeters.dev/about): what the gallery is, how the pod-as-database model works, the RDF vocabulary used (schema.org + Web Annotations), the comment privacy model, and how to become a moderator - read this first for anything about contributing.
+- [Discover](https://solid-app-gallery.mpeters.dev/): the home gallery - quick-links grid, category tabs, masonry app cards.
+- [Screens](https://solid-app-gallery.mpeters.dev/screens): every screenshot across every app, filterable by category, mobile/desktop.
+- [Flows](https://solid-app-gallery.mpeters.dev/flows): horizontal screen carousels per app, showing a full user flow.
+- [Participation](https://solid-app-gallery.mpeters.dev/participation): pod providers and communication channels for joining the Solid ecosystem.
+- [Submit an app](https://solid-app-gallery.mpeters.dev/submit): publish a new app as RDF/Turtle to your own pod (requires Solid login). Name, description, category and keywords are prefilled from a pasted link where available.
+- [Your bookmarks](https://solid-app-gallery.mpeters.dev/bookmarks): apps you've bookmarked (requires Solid login).
+- [SHACL shapes](https://solid-app-gallery.mpeters.dev/shapes/gallery-shacl): the catalog's data shape as SHACL (content-negotiated; also available as LinkML YAML).
+- [Sitemap](https://solid-app-gallery.mpeters.dev/sitemap.xml): every app, author, and screen page, generated from the live catalog.
+
+Every app has its own page at `/app/:id` (screenshots, description, links, published Application Capability shapes, and a shape derived from marked screen regions) and every screenshot has its own page at `/screen/:id`. Shapes can be viewed as LinkML, SHACL, or ShEx. Signed-in visitors can leave comments and draw a region around visible data to identify the RDF class or property the app shows or edits. Public comments and region annotations are written to the gallery's shared pod; private comments are written to the visitor's own pod. Every contributor has an author page at `/author/:id` showing their submissions and comments. Moderators additionally get a submission queue at `/review`.
+
+## Querying the data
+
+The catalog is plain RDF, world-readable, no login required: `https://pod.mpeters.dev/test/solid-gallery/catalog.ttl`. The pod content-negotiates on the `Accept` header - `text/turtle` (default), `application/ld+json`, and `application/n-quads` all work:
+
+```
+curl -H "Accept: application/ld+json" https://pod.mpeters.dev/test/solid-gallery/catalog.ttl
+```
+
+Each app is an `ex:Software` record; its screenshots and flow videos are linked as `schema:ImageObject`/`schema:VideoObject` under `solid-gallery/screens/` and `solid-gallery/videos/`. The [SHACL shapes](https://solid-app-gallery.mpeters.dev/shapes/gallery-shacl) doc above defines the full shape of every record.
+
+Comments are **not** linked from `catalog.ttl` - they live in a separate, unlinked LDP container at `solid-gallery/comments/`, one subcontainer per screen as `oa:Annotation` resources. `GET` that container URL (with `Accept: text/turtle`) to list every screen that has comments via `ldp:contains`, then `GET` each subcontainer the same way to list its individual annotations. There's no stable mapping from a catalog app/screen to its comment subcontainer name - list-and-match is the only reliable path, since the app derives the container key from an internal slug.
+
+Data regions live under `solid-gallery/regions/`, one public LDP subcontainer per app. Each is an `oa:Annotation` whose target includes an `oa:FragmentSelector` (`xywh=percent:...`) and whose body identifies the RDF term represented by the selected screen area. The gallery aggregates those annotations into per-app shapes and uses them for vocabulary-term filtering on `/screens?term=<IRI>`.
+
+## Optional
+
+- [Solid Catalog](https://github.com/solid-contrib) - the wider Solid Catalog project this gallery is a Mobbin-style front end for.
+- [Solid protocol](https://solidproject.org) - the underlying decentralized data standard (pods, WebID, WAC/ACP access control).
+- [@uvdsl/solid-oidc-client-browser](https://github.com/uvdsl/solid-oidc-client-browser) - the OIDC client library used for Solid login.
