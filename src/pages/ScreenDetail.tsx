@@ -188,17 +188,20 @@ export function ScreenDetail() {
             <span className="font-semibold">{app.name}</span>
           </Link>
           <div className="flex items-center gap-2">
-            <BookmarkButton appId={app.id} variant="chrome" className="h-9 w-9" />
+            <BookmarkButton appId={app.id} variant="chrome" className="hidden h-9 w-9 md:flex" />
             <button
-              onClick={() => setShowPanel((v) => !v)}
-              aria-label={showPanel ? "Hide panel" : "Show data and comments"}
-              aria-pressed={showPanel}
+              onClick={() => {
+                setPanel("comments");
+                setShowPanel((v) => !v);
+              }}
+              aria-label={showPanel ? "Hide comments" : "Show comments"}
+              aria-pressed={showPanel && panel === "comments"}
               className={cn(
-                "relative flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/20 md:hidden",
+                "relative hidden h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/20 md:flex",
                 showPanel ? "bg-foreground/20" : "bg-foreground/10"
               )}
             >
-              {panel === "comments" ? <MessageCircle className="h-5 w-5" /> : <Scan className="h-5 w-5" />}
+              <MessageCircle className="h-5 w-5" />
               {panelCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
                   {panelCount > 99 ? "99+" : panelCount}
@@ -283,6 +286,33 @@ export function ScreenDetail() {
               <ChevronRight className="h-6 w-6" />
             </button>
           )}
+        </div>
+
+        <div className="flex gap-3 px-6 pb-3 md:hidden">
+          <BookmarkButton appId={app.id} variant="button" className="w-full flex-1 justify-center" />
+          <button
+            type="button"
+            onClick={() => {
+              if (showPanel && panel === "comments") setShowPanel(false);
+              else {
+                setPanel("comments");
+                setShowPanel(true);
+              }
+            }}
+            aria-pressed={showPanel && panel === "comments"}
+            className={cn(
+              "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-border px-4 text-sm font-semibold transition-colors hover:bg-accent",
+              showPanel && panel === "comments" && "bg-accent"
+            )}
+          >
+            <MessageCircle className="h-4 w-4 shrink-0" />
+            Comments
+            {commentCount > 0 && (
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] leading-none text-primary-foreground">
+                {commentCount > 99 ? "99+" : commentCount}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="flex items-center justify-between px-6 pb-5 text-sm text-muted-foreground">
