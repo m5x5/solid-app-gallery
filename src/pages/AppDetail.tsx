@@ -521,6 +521,7 @@ export function AppDetail() {
   }
 
   async function toggleAppFlag(flag: "showUpdated" | "nonFunctional", enabled: boolean) {
+    if (!app) return;
     setBusy(true);
     try {
       await setAppFlag(app.id, flag, enabled);
@@ -628,7 +629,7 @@ export function AppDetail() {
             <Badge>{app.category}</Badge>
             {app.status && <Badge>{app.status}</Badge>}
             {app.showUpdated && <Badge>Updated</Badge>}
-            {app.nonFunctional && <Badge variant="outline">Not functional</Badge>}
+            {app.nonFunctional && <Badge>Not functional</Badge>}
             {isAdmin && !app.excluded && !app.deleted && (
               <button
                 type="button"
